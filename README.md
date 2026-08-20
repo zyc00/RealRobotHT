@@ -61,6 +61,30 @@ qawake  # keep the headset awake off-head
 qguard  # pause the headset boundary system
 ```
 
+## Admittance demo (not a working teleop mode)
+
+```bash
+python examples/admittance_demo.py --light
+```
+
+Push the arm and it follows your hand. Kept as a demonstration only. Force
+sensing works well (SNR 47-135 on J2/J3), but it never became usable:
+
+- breakaway ~4.2 N against ~1.3 N of real joint friction - admittance must
+  INFER a push from torque and cannot tell your hand from the joint sitting
+  somewhere in its friction band
+- the deadband is floored by gravity-model error, and the vendor URDF does not
+  match this arm (51 mm rigid-fit residual)
+- it drifts; the zeroing, hysteresis and drift guards reduce but do not remove it
+
+Unfixable in software: **MIT torque control is inert on firmware S-V1.9-0**, so
+real gravity compensation is impossible and this was the workaround. VR teleop
+replaced the need for it.
+
+Runs with no setup, using the analytic URDF gravity model and wider deadbands.
+For the better fitted model, the identification sweep is in the history at
+`380ce14` (`scripts/06_identify.py`, `07_fit_gravity.py`).
+
 ## Notes
 
 - Hand-dragging the arm puts it in teach mode, after which every command is
