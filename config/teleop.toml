@@ -1,6 +1,7 @@
-# Teleop tuning. Edit here; CLI flags still override anything set below.
-# Read by scripts/12_vr_teleop.py and scripts/24_keyboard_teleop.py.
-# Lengths are METRES, angles DEGREES.
+# Teleop tuning for this project. Loaded by examples/record_teleop.py and passed
+# into the piperx_teleop objects; the package never reads a config file itself.
+# Layers over the package defaults, so anything omitted here falls back to those.
+# CLI flags override this file. Lengths are METRES, angles DEGREES.
 
 [input]
 # Which input drives the teleop: keyboard | quest | scripted
