@@ -49,6 +49,18 @@ Set `min_z` just above the surface as a collision guard.
 near 0**: measured, J4 at 89 deg gave 27 mm of vertical travel before the arm
 stalled, while J4 near 0 gave full range in every direction.
 
+## Helpers
+
+Installed with the package, so they work from any directory:
+
+```bash
+re      # piperx-release        motors + gripper off - THE ARM WILL FALL
+reh     # piperx-release --hold freeze in place
+reo     # piperx-release --open open the gripper only
+qawake  # keep the headset awake off-head
+qguard  # pause the headset boundary system
+```
+
 ## Notes
 
 - Hand-dragging the arm puts it in teach mode, after which every command is
