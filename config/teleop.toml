@@ -1,0 +1,56 @@
+# Teleop tuning. Edit here; CLI flags still override anything set below.
+# Read by scripts/12_vr_teleop.py and scripts/24_keyboard_teleop.py.
+# Lengths are METRES, angles DEGREES.
+
+[motion]
+# Hand metres -> robot metres. 0.5 means a 20 cm reach moves the arm 10 cm.
+# Lower = finer control and less chance of hitting the rate limit.
+gain = 0.8
+# Metres the COMMAND may advance per control cycle (~100 Hz), i.e. the top
+# speed the arm chases your hand at. 0.004 = 400 mm/s.
+max_step = 0.004
+# Firmware MOVE speed percentage. The vendor demos use 100; that is reckless.
+speed = 20
+
+[workspace]
+# Box half-size measured from WHERE THE SESSION STARTS, not from the robot base.
+# To work near the table, start the session low (--save-home) rather than
+# opening this up - a tight box around your actual work area is safer.
+max_reach = 0.30
+# Hard floor above the base plane. Set this just above your table surface;
+# it is your collision guard, so measure it rather than guessing.
+min_z = 0.0
+
+[rotation]
+# Enable orientation control (equivalent to --unlock-rotation).
+unlock = false
+# Wrist rotation scaling. Measured: a hand moving normally rotates ~19 deg
+# incidentally, so keep this well below 1.
+gain = 0.4
+# Ignore wrist rotation below this. Without it, incidental twist while
+# translating drove J4 through 122 deg.
+deadband = 6.0
+# Degrees of tool rotation per control cycle. Wrist joints amplify tool
+# rotation, so this trips the joint watchdog sooner than translation does.
+max_step = 1.5
+
+[safety]
+# Abort if any joint moves more than this in one cycle. Measured p99 during
+# healthy Cartesian tracking is 0.81 deg; a firmware IK branch flip produced
+# 17.9 deg. Do not raise this to work around a stall.
+max_joint_step = 2.0
+# How far the command may lead the arm's ACTUAL pose. Without it, a stall lets
+# the command run away and the arm feels dead until you retrace the gap.
+lead_limit = 0.04
+
+[keyboard]
+# Metres and degrees per keypress in the keyboard teleop.
+step = 0.005
+rot_step = 3.0
+
+[quest]
+port = 7777
+# "between_clutch" re-aims the frame when the clutch is open and holds it
+# during a drag. "latched" never re-aims. A measured body frame from
+# scripts/21_calib_yaw.py overrides this.
+frame_mode = "between_clutch"
