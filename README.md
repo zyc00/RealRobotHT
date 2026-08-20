@@ -85,6 +85,36 @@ Runs with no setup, using the analytic URDF gravity model and wider deadbands.
 For the better fitted model, the identification sweep is in the history at
 `380ce14` (`scripts/06_identify.py`, `07_fit_gravity.py`).
 
+## NEXT: learned free-space torque model
+
+A NEXT-style estimator (FACTR 2, [arXiv 2606.12406](https://arxiv.org/abs/2606.12406))
+predicts the torque a **contact-free** arm should be drawing, so the residual
+against measured torque is the external torque. It replaces the analytic gravity
+model, whose error was 6-47x the arm's own repeatability - which is what forces
+the heavy admittance deadbands.
+
+```bash
+python examples/next_collect.py                  # ~10 min of arm motion, DO NOT TOUCH IT
+python examples/next_train.py --no-cmd           # ~20 s on the GPU
+python examples/next_fit_deadband.py data/next_model.pt data/next_deadband.npz
+python examples/admittance_demo.py --light       # picks the model up automatically
+```
+
+Measured on this arm: the learned model beat the analytic one on every joint
+(J2 0.37 -> 0.30, J4 0.28 -> 0.14 reported N.m). But most of the practical gain
+came from a diagnostic rather than the network - the error scales with **overall
+arm speed**, not each joint's own, so a speed-dependent deadband cut J4's from
+1.63 to 0.17 and J2's from 0.88 to 0.41.
+
+Two things worth knowing before trusting it:
+
+- **`--no-cmd` matters.** The paper feeds `q_cmd - q` as an input, which is right
+  when `q_cmd` comes from a human teleoperator. Fed to an admittance loop it
+  closes a feedback path, since `q_cmd` is then that loop's own output, and the
+  arm drifts. Accuracy without it was unchanged.
+- **58% of poses in our collection had near-duplicates**, because the logger
+  repeats its trajectory programme, so validation numbers are optimistic.
+
 ## Notes
 
 - Hand-dragging the arm puts it in teach mode, after which every command is
