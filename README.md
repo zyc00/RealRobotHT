@@ -1,47 +1,64 @@
 # RealRobotHT
 
-Bring-up, identification and data collection for a Piper (piperx) arm.
+Teleoperated data collection for a Piper (piperx) arm.
 
-Teleoperation now lives in the **[piperx_teleop](https://github.com/zyc00/PiperxTeleop)**
-package (`pip install -e ~/projects/piperx_teleop`); this repo keeps the research
-work and the scripts that drive it.
-
-## Teleop and data collection
+Teleoperation itself lives in **[piperx_teleop](https://github.com/zyc00/PiperxTeleop)**:
 
 ```bash
-python scripts/record_teleop.py --out data/ep01.npz --source quest --unlock-rotation
-python scripts/replay_teleop.py data/ep01.npz          # measures replay fidelity
-python scripts/record_scripted.py --out data/test.npz  # no human; validates the loop
+pip install -e ~/projects/piperx_teleop           # keyboard
+pip install -e "~/projects/piperx_teleop[quest]"  # + Quest 3
 ```
 
-`config/teleop.toml` tunes both. `data/home_pose.npz` is the start pose - keep
-**J4 near 0**, or Cartesian range collapses (measured: J4 at 89 deg gave 27 mm of
-travel where J4 at 0 gave the full range).
+## Record
 
-Aliases: `re` (release, arm falls), `reh` (hold), `reo` (open gripper),
-`qawake` / `qguard` (headset stay-awake, guardian pause).
+```bash
+python scripts/record_teleop.py --out data/ep01.npz --source quest --calibrate --unlock-rotation
+python scripts/record_teleop.py --out data/ep01.npz --source keyboard
+python scripts/record_teleop.py --out data/ep01.npz --source scripted   # no human
+```
 
-## Research (the leader-arm branch)
+One row per control tick: `action` (commanded pose, replayable), `intent` (what
+the operator asked for, before limiting), `clutch` (demonstration vs
+repositioning), proprioception, and four timestamps.
 
-`piper_ht/` holds the gravity/admittance work, kept because the measurements
-were expensive:
+## Replay
 
-- `model.py` URDF gravity model - correct as a model, but the URDF does not
-  match this hardware (51 mm mean fit residual)
-- `calibration.py` torque-sensing calibration; the SDK under-reports true joint
-  torque by 2.4-2.9x and its one coefficient per joint group is wrong
-- `gravity_fit.py` gravity model fitted to the real arm, anchored to the URDF
-- `admittance.py` admittance control on the position loop
-- `next_estimator.py` NEXT-style learned free-space torque model (FACTR 2)
+```bash
+python scripts/replay_teleop.py data/ep01.npz --dry-run
+python scripts/replay_teleop.py data/ep01.npz
+```
 
-Scripts `01`-`11` and `15`-`17` produced those. The conclusion: **MIT torque
-control is inert on firmware S-V1.9-0**, so true gravity compensation is
-impossible and a Piper cannot be made into a light leader arm. VR teleop
-replaced that approach.
+Homes to the recorded starting joints - the firmware's IK resolves from the
+current configuration, so starting elsewhere can put the same end-effector path
+on a different joint solution - then replays and reports the error. Measured
+0.5 mm mean over 1590 ticks.
 
-## Diagnostics still useful
+## Config
 
-- `19_analyze_log.py` - which pipeline stage a bad teleop session died at
-- `23_raw_controller.py` - is the headset actually tracking the controller
-- `26_tracking_quality.py` - score a headset placement
-- `monitor.py`, `park.py`, `release.py`
+`config/teleop.toml` is loaded by the record script and passed into the teleop
+objects; the package never reads a config file itself.
+
+The two keys you will actually tune are `workspace.max_reach` and
+`workspace.min_z`. **`max_reach` is measured from where the session starts**, so
+to work near a table, start the session low rather than opening the box wide.
+Set `min_z` just above the surface as a collision guard.
+
+## Start pose
+
+`data/home_pose.npz` holds the joint pose each session begins from. Keep **J4
+near 0**: measured, J4 at 89 deg gave 27 mm of vertical travel before the arm
+stalled, while J4 near 0 gave full range in every direction.
+
+## Notes
+
+- Hand-dragging the arm puts it in teach mode, after which every command is
+  silently discarded. Press the teach button on the arm; it cannot be cleared
+  over CAN.
+- Quest 3 controllers are tracked optically. Out of the headset's view the IMU
+  dead-reckons a valid-looking pose that does not follow your hand; the session
+  warns when it detects this.
+- `can0` down: `sudo ip link set can0 up type can bitrate 1000000`
+
+The gravity-compensation and admittance research that preceded this (and the
+finding that MIT torque control is inert on firmware S-V1.9-0) is in the git
+history, at commit `380ce14`.
