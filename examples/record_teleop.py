@@ -1,8 +1,8 @@
 """Teleoperate a Piper arm and record the trajectory.
 
-    python scripts/record_teleop.py --out data/ep01.npz                       # keyboard
-    python scripts/record_teleop.py --out data/ep01.npz --source quest --calibrate
-    python scripts/record_teleop.py --out data/ep01.npz --source scripted     # no human
+    python examples/record_teleop.py --out data/ep01.npz                       # keyboard
+    python examples/record_teleop.py --out data/ep01.npz --source quest --calibrate
+    python examples/record_teleop.py --out data/ep01.npz --source scripted     # no human
 
 Config is loaded HERE and passed into the teleop objects; the piperx_teleop
 package never reads a config file of its own.
@@ -32,7 +32,27 @@ ap.add_argument("--calibrate", action="store_true", help="quest: measure your fo
 ap.add_argument("--heading", type=float, default=0.0)
 ap.add_argument("--seconds", type=float, default=16.0, help="scripted: duration")
 ap.add_argument("--radius", type=float, default=0.05, help="scripted: circle radius (m)")
+ap.add_argument("--save-home", action="store_true",
+                help="save the arm's CURRENT joint pose as the home pose, then exit")
 a = ap.parse_args()
+
+if a.save_home:
+    from piperx_teleop.arm import JOINT_LIMITS
+    _arm = PiperArm(a.can).connect(require_control=False)
+    q = _arm.q()
+    m = np.degrees(np.minimum(q - JOINT_LIMITS[:, 0], JOINT_LIMITS[:, 1] - q))
+    os.makedirs(os.path.dirname(a.home) or ".", exist_ok=True)
+    np.savez(a.home, q=q)
+    print("saved %s" % a.home)
+    print("  joints (deg) :", np.degrees(q).round(1))
+    print("  limit margins:", m.round(1))
+    if m[3] < 25:
+        print("  !! J4 is only %.0f deg from its limit. Cartesian range collapses there -"
+              "\n     measured: J4 at 89 deg gave 27 mm of vertical travel, J4 near 0 gave"
+              "\n     the full range. Consider rolling J4 toward 0 before saving." % m[3])
+    if m.min() < 10:
+        print("  !! J%d is only %.0f deg from its limit." % (int(m.argmin()) + 1, m.min()))
+    sys.exit(0)
 
 
 class ScriptedSource:
@@ -87,7 +107,12 @@ else:
         print("forward heading: %.1f deg" % src.heading_deg)
     banner = "squeeze the right grip to clutch; Ctrl-C to stop"
 
-home = np.load(a.home)["q"] if os.path.exists(a.home) else None
+if os.path.exists(a.home):
+    home = np.load(a.home)["q"]
+else:
+    home = None
+    print("!! no home pose at %s - the session will start wherever the arm happens to be,\n"
+          "   so `max_reach` is measured from there. Set one with --save-home." % a.home)
 arm = PiperArm(a.can).connect()
 sess = TeleopSession(arm, CartesianTeleop(arm, cfg), src, home_q=home)
 

@@ -23,7 +23,7 @@ min_z = 0.0
 
 [rotation]
 # Enable orientation control (equivalent to --unlock-rotation).
-unlock = false
+unlock = true
 # Wrist rotation scaling. Measured: a hand moving normally rotates ~19 deg
 # incidentally, so keep this well below 1.
 gain = 0.4

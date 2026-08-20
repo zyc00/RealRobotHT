@@ -12,9 +12,9 @@ pip install -e "~/projects/piperx_teleop[quest]"  # + Quest 3
 ## Record
 
 ```bash
-python scripts/record_teleop.py --out data/ep01.npz --source quest --calibrate --unlock-rotation
-python scripts/record_teleop.py --out data/ep01.npz --source keyboard
-python scripts/record_teleop.py --out data/ep01.npz --source scripted   # no human
+python examples/record_teleop.py --out data/ep01.npz --source quest --calibrate
+python examples/record_teleop.py --out data/ep01.npz --source keyboard
+python examples/record_teleop.py --out data/ep01.npz --source scripted   # no human
 ```
 
 One row per control tick: `action` (commanded pose, replayable), `intent` (what
@@ -24,8 +24,8 @@ repositioning), proprioception, and four timestamps.
 ## Replay
 
 ```bash
-python scripts/replay_teleop.py data/ep01.npz --dry-run
-python scripts/replay_teleop.py data/ep01.npz
+python examples/replay_teleop.py data/ep01.npz --dry-run
+python examples/replay_teleop.py data/ep01.npz
 ```
 
 Homes to the recorded starting joints - the firmware's IK resolves from the
@@ -35,7 +35,7 @@ on a different joint solution - then replays and reports the error. Measured
 
 ## Config
 
-`config/teleop.toml` is loaded by the record script and passed into the teleop
+`config/teleop.toml` is loaded by the record script (rotation is enabled there by default) and passed into the teleop
 objects; the package never reads a config file itself.
 
 The two keys you will actually tune are `workspace.max_reach` and
