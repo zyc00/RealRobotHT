@@ -40,13 +40,30 @@ deadband = 6.0
 max_step = 1.5
 
 [filter]
-# Hand tremor (~8-12 Hz) removal. oneeuro adapts its cutoff to speed: steady at
-# rest, responsive when moving. Lower min_cutoff = smoother but laggier.
-kind = "oneeuro"
-min_cutoff = 3.0
-beta = 1.5
+# Hand tremor (~8-12 Hz) removal. Both parameter sets live here; `kind` picks
+# which is used, so you can A/B them without re-tuning.
+#
+# Measured on a 0.4 Hz reach carrying 4 mm of 10 Hz tremor:
+#                       tremor cut   lag     overshoot on a hard stop
+#   oneeuro 1.0 / 0.7      82%      115 ms      +0.4 mm
+#   oneeuro 3.0 / 1.5      65%       30 ms      +1.1 mm   <- current
+#   kalman  q=1            70%        0 ms      +4.0 mm
+#
+# The kalman reaches zero lag by predicting forward, which is also why it sails
+# past a hard stop - usually worse than 30 ms of lag when placing something.
+kind = "oneeuro"          # none | oneeuro | kalman
+
+# oneeuro: cutoff adapts to speed - steady at rest, responsive when moving
+min_cutoff = 3.0          # Hz at rest; lower = smoother but laggier
+beta = 1.5                # higher = opens up faster when you move
 rot_min_cutoff = 3.0
 rot_beta = 1.5
+
+# kalman: constant-velocity model
+process_var = 1.0         # lower = smoother and more predictive, more overshoot
+meas_var = 1e-4           # higher = trusts the model over your hand
+rot_process_var = 1.0
+rot_meas_var = 1e-4
 
 [safety]
 # Abort if any joint moves more than this in one cycle. Measured p99 during
