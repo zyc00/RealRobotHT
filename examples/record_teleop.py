@@ -24,7 +24,8 @@ from piperx_teleop.sources import KeyboardSource, TeleopSample
 ap = argparse.ArgumentParser()
 ap.add_argument("--out", default="data/episode.npz")
 ap.add_argument("--can", default="can0")
-ap.add_argument("--source", choices=["keyboard", "quest", "scripted"], default="keyboard")
+ap.add_argument("--source", choices=["keyboard", "quest", "scripted"], default=None,
+                help="overrides input.source in the config file")
 ap.add_argument("--config", default="config/teleop.toml")
 ap.add_argument("--home", default="data/home_pose.npz")
 ap.add_argument("--unlock-rotation", action="store_true")
@@ -85,13 +86,17 @@ class ScriptedSource:
 cfg = load_config(a.config if os.path.exists(a.config) else None)
 if a.unlock_rotation:
     cfg.rotation.unlock = True
+source = a.source or cfg.input.source
+print("config: %s | source: %s%s"
+      % (a.config if os.path.exists(a.config) else "(packaged defaults)", source,
+         "" if a.source else " (from config)"))
 
 banner = "Ctrl-C to stop"
-if a.source == "keyboard":
+if source == "keyboard":
     src = KeyboardSource(cfg)
     from piperx_teleop.sources.keyboard import HELP
     banner = HELP
-elif a.source == "scripted":
+elif source == "scripted":
     cfg.motion.gain = 1.0            # the scripted path is already in robot metres
     src = ScriptedSource(a.seconds, a.radius)
     banner = "scripted %.0f s circle, r=%.0f mm" % (a.seconds, a.radius * 1000)

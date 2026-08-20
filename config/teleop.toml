@@ -2,6 +2,10 @@
 # Read by scripts/12_vr_teleop.py and scripts/24_keyboard_teleop.py.
 # Lengths are METRES, angles DEGREES.
 
+[input]
+# Which input drives the teleop: keyboard | quest | scripted
+source = "quest"
+
 [motion]
 # Hand metres -> robot metres. 0.5 means a 20 cm reach moves the arm 10 cm.
 # Lower = finer control and less chance of hitting the rate limit.
