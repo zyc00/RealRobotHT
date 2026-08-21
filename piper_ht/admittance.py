@@ -58,7 +58,9 @@ class AdmittanceController:
         # full deadband, but once a joint is moving we only need to stay above
         # `hysteresis` of it - otherwise every joint feels as heavy to keep
         # moving as it did to start, which is what made this feel sticky.
-        self.hysteresis = float(hysteresis)
+        # Scalar or per-joint: only the joints whose torque noise exceeds their
+        # own keep-moving threshold need a higher value.
+        self.hysteresis = np.asarray(hysteresis, float) * np.ones(6)
         self.active = np.zeros(6, bool)
         # Virtual inertia.  0 means the massless first-order law qdot = tau/D,
         # which is the lightest response for a given D.  Positive M makes the

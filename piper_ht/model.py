@@ -215,9 +215,12 @@ class PiperModel:
         return Y
 
     def identifiable_links(self):
-        """Links that can carry gravity load, ordered outward from the base."""
+        """Links that can carry gravity load, ordered outward from the base.
+
+        Names follow the piper_x + gripper URDF (link7/link8 were the old
+        piper file's finger names; they no longer exist)."""
         return ["link1", "link2", "link3", "link4", "link5", "link6",
-                "gripper_base", "link7", "link8"]
+                "flange_link", "gripper_base", "gripper_link1", "gripper_link2"]
 
     def beta_urdf(self, links=None):
         """The URDF's own barycentric parameters, as the regressor orders them."""

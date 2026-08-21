@@ -1,0 +1,51 @@
+# Admittance tuning for examples/admittance_demo.py.
+# Layers over the AdmittanceController defaults; CLI flags override this file.
+# Angles are DEGREES, torques are SDK reported-effort N.m.
+#
+# The law is  qdot = (|tau_user| - deadband) / damping,  so:
+#   damping DOWN -> same push moves the arm faster -> feels LIGHTER
+#   deadband DOWN -> less push needed to break away  -> feels LIGHTER, drifts more
+# Damping is the knob to turn first; the deadband is floored by gravity-model
+# error, so cutting it below ~0.8 buys jitter and drift rather than lightness.
+
+[control]
+# Per joint, J1..J6. These are HALF the previous defaults (6, 7, 6, 6, 4, 2.5).
+# Lower = lighter. Below roughly half again, torque noise starts showing up as
+# jitter; if you go there, add `mass` to low-pass the velocity.
+damping = [2.0, 3.0, 3.0, 1.0, 2.0, 1.25]
+
+# Once a joint is moving it only has to stay above this fraction of the deadband
+# to keep moving. Lower = less sticky mid-drag. 1.0 disables the hysteresis.
+hysteresis = 0.35
+
+# Virtual inertia. 0 = the lightest first-order response. Positive values do NOT
+# make dragging lighter; they low-pass velocity with time constant mass/damping,
+# which is what lets you drop damping further without jitter. Try 0.35.
+mass = 0.0
+
+# Scales every joint's deadband. 1.0 = the measured noise floor + 15% headroom.
+deadband_scale = 1.0
+
+[safety]
+# Hard cap on commanded joint velocity, rad/s. This bounds how fast the arm can
+# run away if the model is wrong; halving damping does not change it.
+v_max = 0.8
+# How far the setpoint may lead the arm's actual position, degrees.
+leash_deg = 6.0
+# Total travel from the start pose before the run stops itself, degrees.
+max_travel_deg = 90.0
+# Firmware MOVE speed percentage for the underlying position commands.
+speed_pct = 55
+
+[start]
+# Starting J2, J3 in degrees. Pick a pose with room to move.
+pose = [40.0, -90.0]
+
+[joints]
+# Which joints respond to a push, J1..J6.
+enabled = [true, true, true, true, true, true]
+
+[model]
+# Use the learned NEXT free-space model when data/next_model.pt exists.
+# false = always use the analytic URDF gravity model.
+use_next = true
