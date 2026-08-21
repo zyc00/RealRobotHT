@@ -53,8 +53,14 @@ FS    = np.array([0.40, 1.40, 0.55, 0.10, 0.10, 0.10])      # breakaway, min-dir
 # built on the lower bound is guaranteed below true static friction and
 # therefore guaranteed to never finish the job (measured: J1+ needs 0.6-0.9,
 # lower-bound cap gave 0.36 - the fingertip was paying the difference).
-FS_POS = np.array([0.75, 1.70, 0.675, 0.40, 0.45, 0.12])     # mid of (+) bracket
-FS_NEG = np.array([0.50, 2.90, 1.30,  0.40, 0.45, 0.12])     # mid of (-) bracket
+# Directed-assist caps: 0.95 x the LOWER breakaway bracket bound - provably
+# below true static friction, so the assist CANNOT move a joint alone even
+# with a falsely-open gate. Self-drive is impossible by construction (mid-
+# bracket caps + a permissive gate walked the arm to J1=106 deg; measured).
+# The remaining finger force per joint = the bracket WIDTH; tightening the
+# brackets (breakaway bisection) is the measured road to lighter, NOT gates.
+FS_POS = 0.95 * np.array([0.60, 1.40, 0.55, 0.12, 0.10, 0.10])
+FS_NEG = 0.95 * np.array([0.40, 2.60, 1.10, 0.12, 0.10, 0.10])
 # wrist directed caps use the STICKY-pose end of their range: J4/J5 static
 # friction is position-dependent up to ~0.65 (measured), and the directed
 # term is motion-gated, so the at-rest self-drive bound does not apply to it.
@@ -80,6 +86,12 @@ TAU_INERTIA_CAP = np.array([0.6, 1.2, 0.6, 0.15, 0.05, 0.05])
 ap = argparse.ArgumentParser(description="uniform virtual joints + virtual work")
 ap.add_argument("--k", type=float, default=2.0, help="hand drag, N/(m/s)")
 ap.add_argument("--beta", type=float, default=0.30, help="inertia matching cap (<=0.4)")
+ap.add_argument("--assist", action="store_true",
+                help="UNSAFE/EXPERIMENTAL directed stiction assist - self-drove "
+                     "the arm to J2=175 deg in a no-push soak (2026-08-21): "
+                     "breakaway varies several-fold with pose, so no fixed "
+                     "sub-breakaway cap both helps and stays safe. Never enable "
+                     "unattended.")
 ap.add_argument("--dither", type=float, default=0.85,
                 help="fraction of the min-direction stiction excess to dither away")
 ap.add_argument("--test-pose", type=str, default="0,50,-75,20,10,0",
@@ -147,15 +159,31 @@ class Law:
         # creep (the micro-ratchet a sub-breakaway push produces through the
         # dither) opens it within ~a second. Encoders cannot see a push that
         # produces zero motion - creep is the smallest observable signature.
-        self._creep = 0.995 * self._creep + 0.005 * xdot if hasattr(self, "_creep") else xdot * 0.0
-        g = max(np.tanh(np.linalg.norm(xdot) / 0.006),
-                np.tanh(np.linalg.norm(self._creep) / 0.002))
-        share = J.T @ xdot
+        # COHERENCE gate: a real push gives xdot pointing one way for ~100s of
+        # ms; dither ripple time-averages to zero. Gate on the slow-averaged
+        # velocity AND its coherence ratio. (The instantaneous-xdot gate
+        # self-drove: noise opened it, noise-deficits made real motion, motion
+        # confirmed the gate - measured, J1 walked to 106 deg with no push.)
+        # permissive gate is SAFE now: with sub-breakaway caps a false
+        # trigger cannot move anything, so no coherence statistics needed
+        g = float(np.tanh(np.linalg.norm(xdot) / 0.005))
+        # deficit coordination: q* = J+ xdot is the min-norm joint sharing of
+        # the observed hand motion. A joint already moving its share has zero
+        # deficit (assist never fights it); a stuck joint's deficit is its
+        # required direction. Raw J'xdot mislead J1: early motion from other
+        # joints projected NEGATIVELY onto it and the assist pushed the wrong
+        # way (measured: J1 saturated its negative cap while being pushed +).
+        qstar = np.linalg.pinv(J, rcond=1e-3) @ xdot
+        deficit = qstar - v
         undirected = A_DITHER * np.sin(2 * np.pi * DITHER_HZ * s.t + PHI)
-        sh = np.tanh(share / 0.015)
-        directed = np.where(sh > 0, FS_POS, FS_NEG) * sh
-        tau += ((1.0 - g) * undirected + g * directed) \
+        dz = np.sign(deficit) * np.maximum(np.abs(deficit) - 0.01, 0.0)
+        sh = np.tanh(dz / 0.02)
+        directed = (np.where(sh > 0, FS_POS, FS_NEG) * sh) if a.assist else 0.0
+        share = deficit                        # logged under the same name
+        stic = ((1.0 - g) * undirected + g * directed) \
                * (1.0 - np.tanh(np.abs(v) / V_STIC))
+        tau += stic
+        self._g, self._share, self._stic = g, share, stic
         self._J = J
         if a.k > 0:
             tau -= a.k * (self._J.T @ (self._J @ v))
@@ -165,7 +193,10 @@ class Law:
                 c = J[:, 0]
                 self._dir = c / max(np.linalg.norm(c), 1e-6)
             tau += J.T @ (amp * self._dir)
-            self.log.append((s.t, amp, s.q.copy()))
+            self.log.append((s.t, amp, s.q.copy(),
+                             getattr(self, "_g", 0.0),
+                             getattr(self, "_share", np.zeros(6)).copy(),
+                             getattr(self, "_stic", np.zeros(6)).copy()))
         return tau
 
 
@@ -189,6 +220,10 @@ if a.test_push > 0 and law.log:
     t, amp, q = (np.array([r[0] for r in law.log]),
                  np.array([r[1] for r in law.log]),
                  np.array([r[2] for r in law.log]))
+    g = np.array([r[3] for r in law.log])
+    share = np.array([r[4] for r in law.log])
+    stic = np.array([r[5] for r in law.log])
+    np.savez("data/vj_test.npz", t=t, amp=amp, q=q, g=g, share=share, stic=stic)
     q0 = q[0]
     print("\nvirtual fingertip along J1's leverage direction:")
     for j in range(6):
@@ -196,4 +231,8 @@ if a.test_push > 0 and law.log:
         print("  J%d: %s" % (j + 1,
               "follows at %.2f N" % amp[m.argmax()] if m.any() else
               "never moved (max %.1f N)" % amp[-1]))
+    print("gate g : max %.2f, first >0.5 at %s" %
+          (g.max(), ("%.2f N" % amp[(g > 0.5).argmax()]) if (g > 0.5).any() else "never"))
+    print("|share| peak/joint:", np.abs(share).max(0).round(4))
+    print("|stic|  peak/joint:", np.abs(stic).max(0).round(2), " -> data/vj_test.npz")
 
