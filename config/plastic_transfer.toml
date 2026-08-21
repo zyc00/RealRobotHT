@@ -1,0 +1,59 @@
+# Tuning for examples/plastic_transfer.py (elastoplastic wrist -> base).
+# CLI flags override this file. Edit between runs - no reinstall needed.
+# This is the v1 (force-reconstruction) transfer the operator tuned and
+# liked; values below are their tuned feel.
+
+[wrist]
+# Spring stiffness K on J4/J5/J6, N.m/rad. Sets reading resolution; the
+# elastic band you feel before yield is yield/K.
+stiffness = [3.0, 3.0, 2.0]
+
+# Damping alongside the spring, N.m/(rad/s). Raise if the wrist rings.
+damping = [0.0, 0.00, 0.00]
+
+# Plastic yield mu_y, N.m: the constant resistance a sustained wrist twist
+# feels, and what a HELD push's reading is clamped to. A channel's sustained
+# assist budget is shrink(yield, dead); transients carry up to 3*yield-dead
+# for ~eta seconds - with yield ~ dead the assist is transient-driven, which
+# is the tuned v1 feel.
+yield = [0.00, 0.06, 0.00]
+
+# Reading deadband, N.m: swallowed before the transfer (gravity-model bias,
+# cable drag, grip pressure). Raise a channel if the base creeps with hands
+# off; lower it to give that channel more sustained assist.
+dead = [0.06, 0.05, 0.04]
+
+[plastic]
+# Yield relaxation time, s (~0.3-1). Shorter = wrist follows a twist sooner
+# but also a shorter breakaway kick to the base.
+eta = 0.6
+
+# Slow drift of the anchor q0 back to the start pose, s. 0 = off (for teleop
+# the wrist should STAY where you put it; limits are guarded regardless).
+recenter_s = 0.0
+
+[transfer]
+# Injection gain per base joint [J1, J2, J3], applied to the geometrically
+# mapped hand force (v1 semantics: O(1-4) values; sign comes from the
+# Jacobian, not from here). kappa[0]=1.0 is the operator's tuned J5/J1 feel;
+# raise a joint's value if it lags, lower if it kicks too hard.
+kappa = [1.0, 6.0, 2.5]
+
+# Transfer low-pass, Hz. Below the base-shakes-wrist mechanical coupling
+# (>5 Hz), above human intent (<1 Hz). Stay in 2-3.
+lpf_hz = 2.5
+
+# Per-joint torque cap = cap_ratio x measured breakaway [0.90, 3.20, 1.50].
+# 1.3 means a wrong reading can nudge the base but never launch it.
+cap_ratio = 1.3
+
+# Grounding damping on J1-J3, N.m/(rad/s): catches the motion after
+# breakthrough. Raise if the base overshoots when you stop pushing.
+base_damping = [0.3, 0.8, 0.5]
+
+[tank]
+# Energy buffer, J. LEAKY BUCKET: recharges 0.8 W always (+0.5 W with hands
+# fully off), drains while assisting - bounds the long-run AVERAGE injected
+# power, not the number of pushes. Normal dragging never empties it; an
+# empty tank pulls kappa smoothly to 1 (passive).
+energy = 12.0
