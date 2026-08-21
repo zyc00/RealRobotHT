@@ -1,0 +1,17 @@
+# Hand-guidance tuning for examples/damping_transfer.py.
+# CLI flags override this file. Edit between runs - no reinstall needed.
+
+[wrist]
+# Damping on J4/J5/J6, N.m per rad/s. This is BOTH the wrist feel AND the
+# force sensor: lower = lighter wrist but weaker signal to the base;
+# higher = firmer wrist, stronger base recruitment.
+damping = [0.40, 0.20, 0.30]
+
+# Velocity below this (rad/s) is encoder noise, not a push. Raise if the
+# base ever twitches with hands off; lower for more sensitivity.
+dead_zone = 0.02
+
+[transfer]
+# How strongly the base follows the projected push, per joint [J1, J2, J3].
+#   too sluggish -> raise    | overshoots / jumpy -> lower
+ratio = [2.0, 2.0, 2.0]

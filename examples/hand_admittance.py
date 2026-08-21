@@ -51,12 +51,16 @@ V_NOISE = 0.004                                  # rad/s, measured quantization 
 
 # ---- design constants (doc 4.3: tau_cap FIRST, then kp, e_max follows) ----
 TAU_CAP = 1.2 * FS_UB_H                          # [1.08, 3.84, 1.80]
-KP_H = np.array([8.0, 20.0, 12.0])               # N.m/rad, host-side
-E_MAX = TAU_CAP / KP_H
+# kp sets the BREAKTHROUGH LATENCY (climb rate = kp * qdot_d) at fixed
+# tau_cap; the first values (8/20/12) made J123 wake ~1 s after the push -
+# "pushed for a while" - per the doc's own kp trade-off. 3x faster now.
+KP_H = np.array([25.0, 45.0, 30.0])              # N.m/rad, host-side
+E_MAX = TAU_CAP / KP_H                           # [2.5, 4.9, 3.4] deg
 M_H = np.array([0.15, 1.10, 0.31])
-KD_H = 0.5 * 2 * np.sqrt(KP_H * M_H)             # ~critical/2: [0.55, 2.35, 0.96]
+KD_H = 0.5 * 2 * np.sqrt(KP_H * M_H)
+KAPPA_FT = 1.0                                   # direct J_H' F_hat feed-through
 QD_MAX = np.array([0.6, 0.5, 0.6])               # rad/s outer-loop limit
-D_X = 40.0                                       # N/(m/s): THE feel knob
+D_X = 15.0                                       # N/(m/s): THE feel knob
 V_DEAD = 6.0 * V_NOISE                           # per-channel observer dead-zone
 F_LPF = 0.25                                     # ~15 ms at 200 Hz
 LAMBDA_FRAC = 0.08
@@ -134,6 +138,7 @@ class HandAdmittance:
 
         # ---------------- force observer [4.1] ----------------
         vL = np.where(np.abs(v[L]) > V_DEAD, v[L], 0.0)
+        n_active = int((vL != 0).sum())
         y = B_V * vL
         A_ = J[:, L].T
         Wd = np.diag(1.0 / np.maximum(B_V * V_DEAD, 1e-4) ** 2)
@@ -144,12 +149,25 @@ class HandAdmittance:
         blind = sigma_min < SIGMA_BLIND
         if blind:
             F_raw = np.zeros(3)
+        # direction is only PHYSICAL with >=2 slipping channels: rank-1
+        # evidence reconstructs a force along one fixed axis no matter where
+        # the real push points, and the base then drives a made-up direction
+        if n_active < 2:
+            F_raw = np.zeros(3)
         self.F_hat += F_LPF * (F_raw - self.F_hat)
         active = np.linalg.norm(self.F_hat) > F_ACTIVE
 
         # ---------------- admittance outer loop [4.2] ----------------
         xdot_d = self.beta * self.F_hat / a.dx
         resid = xdot_d - J[:, L] @ v[L]
+        # never command the base AGAINST the push: regulating total EE speed
+        # down to xdot_d makes the base visibly drive backwards whenever the
+        # hand moves faster than F_hat/D_x ("directions are wrong" feel)
+        nF = np.linalg.norm(self.F_hat)
+        if nF > 1e-6:
+            fdir = self.F_hat / nF
+            par = float(resid @ fdir)
+            resid = resid - min(par, 0.0) * fdir
         JH = J[:, H]
         U2, S2, Vt2 = np.linalg.svd(JH, full_matrices=False)
         lam2 = 0.08 * (S2.max() + 1e-9)
@@ -163,8 +181,10 @@ class HandAdmittance:
         self.p_d += qd_H * dt
         e = np.clip(self.p_d - q[H], -E_MAX, E_MAX)
         self.p_d = q[H] + e                          # anti-windup write-back
-        tau_servo = KP_H * e - KD_H * v[H]
-        tau_servo = np.clip(tau_servo, -TAU_CAP, TAU_CAP)
+        # feed-through gives IMMEDIACY (measured force lands on H the same
+        # tick), the ramp integrator guarantees breakthrough; one shared cap
+        ft = KAPPA_FT * (J[:, H].T @ self.F_hat)
+        tau_servo = np.clip(KP_H * e - KD_H * v[H] + ft, -TAU_CAP, TAU_CAP)
         tau[H] += tau_servo
 
         # ---------------- energy tank [4.4] ----------------
