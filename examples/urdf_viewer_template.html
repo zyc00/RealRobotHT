@@ -1,0 +1,978 @@
+<title>PiPER-X Joint Inspector</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #eef1f4;
+    --panel: #ffffff;
+    --panel-2: #f6f8fa;
+    --ink: #1b2430;
+    --muted: #5b6774;
+    --line: #d5dbe2;
+    --accent: #d9822b;
+    --accent-ink: #9a5416;
+    --blue: #3f7fc0;
+    --blue-ink: #2b5e93;
+    --blind: #1b2430;
+    --blind-ink: #1b2430;
+    --track: #dfe4ea;
+    --mesh: #8c97a6;
+    --mesh-base: #5f6b7a;
+    --mesh-tip: #a3adb9;
+    --grid: #c9d0d8;
+    --grid-major: #b3bcc6;
+    --sky: #f4f6f8;
+    --floor: #d6dbe1;
+    --shadow: 0 1px 2px rgba(27,36,48,.06), 0 8px 24px rgba(27,36,48,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181d;
+      --panel: #1c2128;
+      --panel-2: #232a32;
+      --ink: #e6eaef;
+      --muted: #8e9aa8;
+      --line: #2c343d;
+      --accent: #e8944a;
+      --accent-ink: #f2b27a;
+    --blue: #6aa5e0;
+    --blue-ink: #9cc4ee;
+    --blind: #eef1f4;
+    --blind-ink: #eef1f4;
+      --track: #2f3841;
+      --mesh: #7d8896;
+      --mesh-base: #4a545f;
+      --mesh-tip: #a6afba;
+      --grid: #262d35;
+      --grid-major: #333c46;
+      --sky: #1d232a;
+      --floor: #0f1317;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181d;
+    --panel: #1c2128;
+    --panel-2: #232a32;
+    --ink: #e6eaef;
+    --muted: #8e9aa8;
+    --line: #2c343d;
+    --accent: #e8944a;
+    --accent-ink: #f2b27a;
+    --blue: #6aa5e0;
+    --blue-ink: #9cc4ee;
+    --blind: #eef1f4;
+    --blind-ink: #eef1f4;
+    --track: #2f3841;
+    --mesh: #7d8896;
+    --mesh-base: #4a545f;
+    --mesh-tip: #a6afba;
+    --grid: #262d35;
+    --grid-major: #333c46;
+    --sky: #1d232a;
+    --floor: #0f1317;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    overflow: hidden;
+  }
+  .mono { font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+  .app { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 340px; }
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+    .rail { max-height: 46vh; }
+  }
+
+  .stage { position: relative; min-width: 0; min-height: 0; }
+  canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  canvas#gl:active { cursor: grabbing; }
+
+  .hud { position: absolute; pointer-events: none; }
+  .hud.tl { top: 16px; left: 18px; }
+  .hud.bl { bottom: 14px; left: 18px; display: grid; gap: 6px; }
+  .hud.tr { top: 16px; right: 18px; width: 296px; max-height: calc(100% - 32px); overflow-y: auto; pointer-events: auto; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); backdrop-filter: blur(8px); }
+  @media (max-width: 820px) { .hud.tr { display: none; } }
+  .hud h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .hud .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .hud .sub .mono { color: var(--ink); }
+  .ee { background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 12px; backdrop-filter: blur(6px); }
+  .ee .lbl { color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px; margin-bottom: 4px; }
+  .ee table { border-collapse: collapse; }
+  .ee td { padding: 0 10px 0 0; }
+  .ee td:first-child { color: var(--muted); }
+  .hud.bl .hint { color: var(--muted); font-size: 11.5px; }
+  .hud.bl .hint kbd { font-family: inherit; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; background: var(--panel); }
+
+  .rail { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  @media (max-width: 820px) { .rail { border-left: 0; border-top: 1px solid var(--line); } }
+  .rail-head { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .rail-head h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .rail-head .cnt { font-size: 12px; color: var(--muted); }
+  .rail-body { overflow-y: auto; padding: 6px 0 10px; flex: 1; min-height: 0; }
+
+  .joint { padding: 10px 18px 12px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto auto; column-gap: 12px; row-gap: 4px; transition: background .12s; }
+  .joint:hover, .joint.active { background: var(--panel-2); }
+  .joint .name { display: flex; align-items: baseline; gap: 8px; }
+  .joint .idx { font-weight: 600; font-size: 13px; }
+  .joint .jn { color: var(--muted); font-size: 12px; }
+  .joint .kind { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; }
+  .joint .val { grid-column: 2; grid-row: 1; display: flex; align-items: baseline; gap: 4px; }
+  .joint .val input { width: 68px; text-align: right; font: inherit; font-family: "IBM Plex Mono", Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 1px 4px; }
+  .joint .val input:hover { border-color: var(--line); }
+  .joint .val input:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+  .joint .val .unit { color: var(--muted); font-size: 12px; }
+  .joint .slider { grid-column: 1 / -1; grid-row: 2; }
+  .joint .lim { grid-column: 1 / -1; grid-row: 3; display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+  .joint .lim .rad { color: var(--muted); }
+
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 22px; background: transparent; margin: 0; cursor: pointer; }
+  input[type=range]:focus { outline: none; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; background: var(--track); border-radius: 2px; }
+  input[type=range]::-moz-range-track { height: 4px; background: var(--track); border-radius: 2px; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+  input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+  input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent); }
+  input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent); }
+
+  .section { padding: 12px 14px 14px; display: grid; gap: 10px; }
+  .section h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .section .note { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .section .note b { color: var(--ink); font-weight: 500; }
+  .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+  .sw.acc { background: var(--accent); } .sw.blu { background: var(--blue); }
+  .kv { display: grid; grid-template-columns: auto 1fr; column-gap: 12px; row-gap: 3px; font-size: 12px; align-items: baseline; }
+  .kv .k { color: var(--muted); white-space: nowrap; }
+  .probe { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 8px; align-items: center; font-size: 12px; color: var(--muted); }
+  .probe input { width: 100%; box-sizing: border-box; font: inherit; font-family: "IBM Plex Mono", Menlo, monospace; font-size: 12.5px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; text-align: right; }
+  .probe input:focus { outline: none; border-color: var(--accent); }
+  .intent { display: grid; grid-template-columns: repeat(3, auto); gap: 8px 14px; justify-content: start; align-items: center; }
+  .intent .lab { font-size: 12px; color: var(--muted); }
+  .tri { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+  .tri button { border: 0; border-radius: 0; padding: 3px 9px; background: var(--panel); color: var(--muted); font-family: "IBM Plex Mono", Menlo, monospace; font-size: 12px; }
+  .tri button + button { border-left: 1px solid var(--line); }
+  .tri button.on { background: var(--accent); color: #fff; }
+  .tri button.on[data-v="0"] { background: var(--panel-2); color: var(--ink); }
+  .dir { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .dir > div { background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; text-align: center; }
+  .dir .j { font-size: 11px; color: var(--muted); }
+  .dir .s { font-size: 18px; font-weight: 600; line-height: 1.1; color: var(--blue-ink); }
+  .dir .s.zero { color: var(--muted); }
+  .dir .m { font-size: 11px; color: var(--muted); }
+  .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .labels span { position: absolute; transform: translate(-50%, -50%); font-family: "IBM Plex Mono", Menlo, monospace; font-size: 11.5px; font-weight: 500; padding: 1px 5px; border-radius: 3px; background: color-mix(in srgb, var(--panel) 85%, transparent); white-space: nowrap; }
+  .labels .blu { color: var(--blue-ink); } .labels .acc { color: var(--accent-ink); }
+  .labels .bld { color: var(--blind-ink); border: 1px dashed var(--blind-ink); }
+  .sw.bld { background: var(--blind); }
+  table.t { border-collapse: collapse; width: 100%; font-size: 12px; }
+  table.t th { text-align: left; font-weight: 500; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; padding: 0 6px 4px 0; }
+  table.t td { padding: 3px 6px 3px 0; border-top: 1px solid var(--line); text-align: right; }
+  table.t td:first-child, table.t th:first-child { text-align: left; }
+  table.t .bar { display: inline-block; height: 6px; background: var(--accent); border-radius: 3px; vertical-align: middle; margin-right: 5px; }
+  select { font: inherit; font-size: 12px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+  select:focus { outline: none; border-color: var(--accent); }
+  .blind-list { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; row-gap: 3px; font-size: 11.5px; }
+  .blind-list .k { color: var(--blind-ink); }
+  .rail-foot { border-top: 1px solid var(--line); padding: 12px 18px 14px; display: grid; gap: 10px; background: var(--panel); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button { font: inherit; font-size: 12.5px; font-weight: 500; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  label.chk { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+  label.chk input { accent-color: var(--accent); margin: 0; }
+  .qbox { display: grid; gap: 4px; }
+  .qbox .lbl { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; }
+  .qbox textarea { width: 100%; box-sizing: border-box; resize: none; font: inherit; font-family: "IBM Plex Mono", Menlo, monospace; font-size: 11.5px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; height: 56px; }
+  .qbox textarea:focus { outline: none; border-color: var(--accent); }
+  .toast { color: var(--accent-ink); font-size: 12px; min-height: 1em; }
+  .nogl { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <div class="stage">
+    <canvas id="gl"></canvas>
+    <div class="labels" id="labels"></div>
+    <div class="hud tl">
+      <h1 id="title">PiPER-X</h1>
+      <div class="sub"><span class="mono" id="urdfname"></span> · <span class="mono" id="tris"></span> triangles</div>
+    </div>
+    <div class="hud bl">
+      <div class="ee">
+        <div class="lbl">gripper_base in base_link frame</div>
+        <table class="mono">
+          <tr><td>x y z</td><td id="eepos"></td><td>mm</td></tr>
+          <tr><td>r p y</td><td id="eerpy"></td><td>deg</td></tr>
+        </table>
+      </div>
+      <div class="hint">Drag to orbit · scroll to zoom · right-drag or <kbd>Shift</kbd>-drag to pan · <kbd>R</kbd> resets the view</div>
+    </div>
+    <div class="hud tr">
+      <section class="section" id="sense">
+        <h3>Hand wrench · 3 pushes, 3 twists</h3>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="swwr" checked> Wrench axes</label>
+          <label class="chk"><input type="checkbox" id="swbl"> Blind wrenches</label>
+          <select id="wframe" aria-label="wrench frame"><option value="tool">tool frame</option><option value="base">base frame</option></select>
+        </div>
+        <div class="note">Unit wrenches applied by the hand at the probe: <b>push</b> 1 N along an axis (arrow), <b>twist</b> 1 N·m about it (ring). Colour = how much the wrist feels it: <span class="sw acc"></span>orange fully, <span class="sw bld"></span>black not at all — blind ones are also <b>dashed</b> and marked ✕.</div>
+        <table class="t mono">
+          <thead><tr><th>component</th><th>wrist τ</th><th>base τ</th></tr></thead>
+          <tbody id="wtab"><tr><td>push x</td><td></td><td></td></tr><tr><td>push y</td><td></td><td></td></tr><tr><td>push z</td><td></td><td></td></tr><tr><td>twist x</td><td></td><td></td></tr><tr><td>twist y</td><td></td><td></td></tr><tr><td>twist z</td><td></td><td></td></tr></tbody>
+        </table>
+        <div class="note">N·m of joint torque (norm over the three joints) per 1 N push / 1 N·m twist. Pushes are felt through lever arms, so their wrist τ tops out near the wrist-to-hand distance; twists are felt directly (≤ 1).</div>
+        <div class="note"><b>Three joints resolve only three channels.</b> Components that are each "felt" are not each identifiable: a push along one axis and a twist about another can produce the same wrist torques (the push + twist blind wrenches below say exactly which pairs alias). Under a "hand pushes, doesn't twist" prior the wrist yields 2 push directions; twist z is a check that the prior holds.</div>
+        <div class="note"><b>Blind wrenches</b> — the three [f | m] directions that produce zero wrist torque (null space of J₄₅₆ᵀ), unit-norm in the chosen frame:</div>
+        <div class="blind-list mono" id="blindlist"></div>
+        <h3>Wrist sensing · base mobility</h3>
+        <div class="note">Freeze J1–3 and sweep J4–6: the probe point traces the <b><span class="sw acc"></span>J456 reach</b>, drawn about J4's origin. Freeze J4–6 and sweep J1–3: the <b><span class="sw blu"></span>J123 reach</b>, as (q2,q3) sheets at several q1.</div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="sw456"> J456 reach</label>
+          <label class="chk"><input type="checkbox" id="sw123"> J123 reach</label>
+          <label class="chk"><input type="checkbox" id="swell"> Sensing plane</label>
+        </div>
+        <div class="probe">
+          <span>probe z</span><input type="text" inputmode="decimal" id="pz" value="150" aria-label="probe z offset mm">
+          <span>lateral x</span><input type="text" inputmode="decimal" id="px" value="0" aria-label="probe lateral offset mm">
+        </div>
+        <div class="note">Probe point in the gripper_base frame, mm — where the hand holds the tool.</div>
+        <div class="note"><b><span class="sw acc"></span>Sensing disc</b>: the plane J4–6 can move the hand in. A push in this plane deflects the wrist, so the intent is observable. <b><span class="sw bld"></span>Blind line</b> ⟂ to it: a push along it produces no wrist deflection — only J1–3 torques can sense it. <b><span class="sw blu"></span>J1 J2 J3 arrows</b>: where each base joint moves the hand (length ∝ m/rad).</div>
+        <table class="t mono">
+          <thead><tr><th>base joint</th><th>in wrist plane</th><th>blind push → τ</th></tr></thead>
+          <tbody id="jtab"><tr><td>J1</td><td></td><td></td></tr><tr><td>J2</td><td></td><td></td></tr><tr><td>J3</td><td></td><td></td></tr></tbody>
+        </table>
+        <div class="note"><b>in wrist plane</b>: share of that joint's hand motion the wrist can report (100% = fully observable by J456, 0% = invisible). <b>blind push → τ</b>: N·m of joint torque per N pushed outward along the blind line — the signature J1–3 torque sensing must pick up. σ₃/σ₁ of J456 = <span class="mono" id="sigratio"></span>.</div>
+        <h3>Intent probe</h3>
+        <div class="note">Wrist torque signs (deflection signs under isotropic compliance) → hand force estimate under a "push, don't twist" prior, <b>f̂ = (J₄₅₆ᵀ)⁺ τ₄₅₆</b> (arrow) → the torque that push applies to each base joint, <b>τ̂₁₂₃ = J₁₂₃ᵀ f̂</b>: its sign is the direction the friction compensation should push. The tool-axis part of f is unobservable and is left at zero.</div>
+        <div class="intent">
+          <span class="lab">τ4 / δq4</span><span class="lab">τ5 / δq5</span><span class="lab">τ6 / δq6</span>
+          <div class="tri" data-j="0"><button data-v="-1">−</button><button data-v="0" class="on">0</button><button data-v="1">+</button></div>
+          <div class="tri" data-j="1"><button data-v="-1">−</button><button data-v="0" class="on">0</button><button data-v="1">+</button></div>
+          <div class="tri" data-j="2"><button data-v="-1">−</button><button data-v="0" class="on">0</button><button data-v="1">+</button></div>
+        </div>
+        <div class="dir mono" id="dir123">
+          <div><div class="j">τ̂ J1</div><div class="s zero">·</div><div class="m"></div></div>
+          <div><div class="j">τ̂ J2</div><div class="s zero">·</div><div class="m"></div></div>
+          <div><div class="j">τ̂ J3</div><div class="s zero">·</div><div class="m"></div></div>
+        </div>
+        <div class="note mono" id="vtext"></div>
+      </section>
+    </div>
+  </div>
+
+  <aside class="rail">
+    <div class="rail-head"><h2>Joints</h2><span class="cnt" id="jcount"></span></div>
+    <div class="rail-body" id="joints"></div>
+    <div class="rail-foot">
+      <div class="row">
+        <button id="zero">Zero all</button>
+        <button id="copyq" class="primary">Copy q (rad)</button>
+        <label class="chk"><input type="checkbox" id="axes" checked> Joint axes</label>
+        <label class="chk"><input type="checkbox" id="grid" checked> Grid</label>
+      </div>
+      <div class="qbox">
+        <div class="lbl">q — radians, SDK joint order · paste to set</div>
+        <textarea id="qtext" spellcheck="false"></textarea>
+      </div>
+      <div class="toast" id="toast"></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+const ROBOT = __ROBOT_JSON__;
+
+// ------------------------------------------------------------------ math (column-major mat4)
+const M = {
+  ident() { const m = new Float32Array(16); m[0] = m[5] = m[10] = m[15] = 1; return m; },
+  mul(a, b) {
+    const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+      o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+    }
+    return o;
+  },
+  fromRT(R, t) { // R: 3x3 row-major nested, t: [x,y,z]
+    const m = new Float32Array(16);
+    m[0] = R[0][0]; m[1] = R[1][0]; m[2] = R[2][0];
+    m[4] = R[0][1]; m[5] = R[1][1]; m[6] = R[2][1];
+    m[8] = R[0][2]; m[9] = R[1][2]; m[10] = R[2][2];
+    m[12] = t[0]; m[13] = t[1]; m[14] = t[2]; m[15] = 1;
+    return m;
+  },
+  rpy(r, p, y) { // fixed-axis: Rz(y) Ry(p) Rx(r), same as piper_ht/model.py
+    const cr = Math.cos(r), sr = Math.sin(r), cp = Math.cos(p), sp = Math.sin(p), cy = Math.cos(y), sy = Math.sin(y);
+    return [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+            [-sp, cp * sr, cp * cr]];
+  },
+  axisAngle(a, q) {
+    const n = Math.hypot(a[0], a[1], a[2]) || 1, x = a[0] / n, y = a[1] / n, z = a[2] / n;
+    const c = Math.cos(q), s = Math.sin(q), t = 1 - c;
+    return [[t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+            [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+            [t * x * z - s * y, t * y * z + s * x, t * z * z + c]];
+  },
+  perspective(fovy, aspect, near, far) {
+    const f = 1 / Math.tan(fovy / 2), m = new Float32Array(16);
+    m[0] = f / aspect; m[5] = f; m[10] = (far + near) / (near - far); m[11] = -1; m[14] = 2 * far * near / (near - far);
+    return m;
+  },
+  lookAt(eye, at, up) {
+    const z = norm3(sub3(eye, at)), x = norm3(cross3(up, z)), y = cross3(z, x);
+    const m = new Float32Array(16);
+    m[0] = x[0]; m[4] = x[1]; m[8] = x[2];
+    m[1] = y[0]; m[5] = y[1]; m[9] = y[2];
+    m[2] = z[0]; m[6] = z[1]; m[10] = z[2];
+    m[12] = -dot3(x, eye); m[13] = -dot3(y, eye); m[14] = -dot3(z, eye); m[15] = 1;
+    return m;
+  },
+  xform(m, v) { return [m[0] * v[0] + m[4] * v[1] + m[8] * v[2] + m[12], m[1] * v[0] + m[5] * v[1] + m[9] * v[2] + m[13], m[2] * v[0] + m[6] * v[1] + m[10] * v[2] + m[14]]; },
+};
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const scl3 = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = a => { const n = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / n, a[1] / n, a[2] / n]; };
+const DEG = 180 / Math.PI;
+function invRigid(m) { // inverse of a rigid mat4
+  const o = new Float32Array(16);
+  o[0] = m[0]; o[1] = m[4]; o[2] = m[8]; o[4] = m[1]; o[5] = m[5]; o[6] = m[9]; o[8] = m[2]; o[9] = m[6]; o[10] = m[10];
+  o[12] = -(m[0] * m[12] + m[1] * m[13] + m[2] * m[14]);
+  o[13] = -(m[4] * m[12] + m[5] * m[13] + m[6] * m[14]);
+  o[14] = -(m[8] * m[12] + m[9] * m[13] + m[10] * m[14]);
+  o[15] = 1; return o;
+}
+function eigSym3(A) { // Jacobi; returns {vals (desc), vecs (columns, same order)}
+  const a = A.map(r => r.slice()), V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  for (let it = 0; it < 60; it++) {
+    let p = 0, q = 1, mx = Math.abs(a[0][1]);
+    if (Math.abs(a[0][2]) > mx) { p = 0; q = 2; mx = Math.abs(a[0][2]); }
+    if (Math.abs(a[1][2]) > mx) { p = 1; q = 2; mx = Math.abs(a[1][2]); }
+    if (mx < 1e-15) break;
+    const th = 0.5 * Math.atan2(2 * a[p][q], a[q][q] - a[p][p]), c = Math.cos(th), s = Math.sin(th);
+    for (let k = 0; k < 3; k++) { const kp = a[k][p], kq = a[k][q]; a[k][p] = c * kp - s * kq; a[k][q] = s * kp + c * kq; }
+    for (let k = 0; k < 3; k++) { const pk = a[p][k], qk = a[q][k]; a[p][k] = c * pk - s * qk; a[q][k] = s * pk + c * qk; }
+    for (let k = 0; k < 3; k++) { const kp = V[k][p], kq = V[k][q]; V[k][p] = c * kp - s * kq; V[k][q] = s * kp + c * kq; }
+  }
+  const idx = [0, 1, 2].sort((i, j) => a[j][j] - a[i][i]);
+  return { vals: idx.map(i => a[i][i]), vecs: idx.map(i => [V[0][i], V[1][i], V[2][i]]) };
+}
+function eigSymN(A) { // cyclic Jacobi for a small symmetric matrix; {vals desc, vecs columns}
+  const n = A.length, a = A.map(r => r.slice()), V = A.map((_, i) => A.map((_, j) => (i === j ? 1 : 0)));
+  for (let sweep = 0; sweep < 30; sweep++) {
+    let off = 0; for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += a[i][j] * a[i][j];
+    if (off < 1e-22) break;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+      if (Math.abs(a[p][q]) < 1e-18) continue;
+      const th = 0.5 * Math.atan2(2 * a[p][q], a[q][q] - a[p][p]), c = Math.cos(th), s = Math.sin(th);
+      for (let k = 0; k < n; k++) { const kp = a[k][p], kq = a[k][q]; a[k][p] = c * kp - s * kq; a[k][q] = s * kp + c * kq; }
+      for (let k = 0; k < n; k++) { const pk = a[p][k], qk = a[q][k]; a[p][k] = c * pk - s * qk; a[q][k] = s * pk + c * qk; }
+      for (let k = 0; k < n; k++) { const kp = V[k][p], kq = V[k][q]; V[k][p] = c * kp - s * kq; V[k][q] = s * kp + c * kq; }
+    }
+  }
+  const idx = [...Array(n).keys()].sort((i, j) => a[j][j] - a[i][i]);
+  return { vals: idx.map(i => a[i][i]), vecs: idx.map(i => V.map(r => r[i])) };
+}
+function inv3(A) {
+  const [[a, b, c], [d, e, f], [g, h, i]] = A;
+  const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+  if (Math.abs(det) < 1e-18) return null;
+  const s = 1 / det;
+  return [[(e * i - f * h) * s, (c * h - b * i) * s, (b * f - c * e) * s],
+          [(f * g - d * i) * s, (a * i - c * g) * s, (c * d - a * f) * s],
+          [(d * h - e * g) * s, (b * g - a * h) * s, (a * e - b * d) * s]];
+}
+const mat3vec = (A, v) => [dot3(A[0], v), dot3(A[1], v), dot3(A[2], v)];
+const cols3 = (c0, c1, c2) => [[c0[0], c1[0], c2[0]], [c0[1], c1[1], c2[1]], [c0[2], c1[2], c2[2]]];
+
+// ------------------------------------------------------------------ kinematics
+const joints = ROBOT.joints;
+const movable = joints.filter(j => (j.type === 'revolute' || j.type === 'prismatic' || j.type === 'continuous') && !j.mimic);
+const q = {};
+movable.forEach(j => { q[j.name] = 0; });
+let linkT = {}, jointT = {};
+
+const originT = {}; joints.forEach(j => { originT[j.name] = M.fromRT(M.rpy(...j.rpy), j.xyz); });
+function fkPure(qm) {
+  const L = {}, J = {};
+  L[joints[0].parent] = M.ident();
+  for (const j of joints) {
+    let T = M.mul(L[j.parent], originT[j.name]);
+    let v = 0;
+    if (j.mimic) v = j.mimic.multiplier * (qm[j.mimic.joint] || 0) + j.mimic.offset;
+    else if (j.name in qm) v = qm[j.name];
+    J[j.name] = T;
+    if (j.type === 'revolute' || j.type === 'continuous') T = M.mul(T, M.fromRT(M.axisAngle(j.axis, v), [0, 0, 0]));
+    else if (j.type === 'prismatic') T = M.mul(T, M.fromRT([[1, 0, 0], [0, 1, 0], [0, 0, 1]], scl3(norm3(j.axis), v)));
+    L[j.child] = T;
+  }
+  return { L, J };
+}
+function fk() { const r = fkPure(q); linkT = r.L; jointT = r.J; }
+
+// ------------------------------------------------------------------ wrist sensing / base mobility
+const WRIST = movable.slice(3, 6), BASE = movable.slice(0, 3);   // joint4-6, joint1-3
+const EE = 'gripper_base';
+const probe = { z: 0.15, x: 0.0 };
+const analysis = { J456: null, J123: null, sig456: [0, 0, 0], sig123: [0, 0, 0], p: [0, 0, 0], v: null, qd: null };
+const intent = [0, 0, 0];
+let show456 = false, show123 = false, showEll = false, showWr = true, showBl = false, wrenchFrame = 'tool';
+const probeLocal = () => [probe.x, 0, probe.z];
+
+function jacobians() {
+  const p = M.xform(linkT[EE], probeLocal());
+  const col = j => { const T = linkT[j.child], Tj = jointT[j.name];
+    const a = norm3([T[0] * j.axis[0] + T[4] * j.axis[1] + T[8] * j.axis[2], T[1] * j.axis[0] + T[5] * j.axis[1] + T[9] * j.axis[2], T[2] * j.axis[0] + T[6] * j.axis[1] + T[10] * j.axis[2]]);
+    return cross3(a, sub3(p, [Tj[12], Tj[13], Tj[14]])); };
+  const c456 = WRIST.map(col), c123 = BASE.map(col);
+  analysis.p = p; analysis.J456 = cols3(...c456); analysis.J123 = cols3(...c123);
+  const sig = J => { const JJt = [0, 1, 2].map(r => [0, 1, 2].map(c => J[r][0] * J[c][0] + J[r][1] * J[c][1] + J[r][2] * J[c][2]));
+    return eigSym3(JJt).vals.map(v => Math.sqrt(Math.max(v, 0))); };
+  analysis.sig456 = sig(analysis.J456); analysis.sig123 = sig(analysis.J123);
+  // wrist sensing plane = top-2 eigenvectors of J456 J456^T; blind line = weakest one, oriented away from J4's origin
+  const J6 = analysis.J456, JJt6 = [0, 1, 2].map(r => [0, 1, 2].map(c => J6[r][0] * J6[c][0] + J6[r][1] * J6[c][1] + J6[r][2] * J6[c][2]));
+  const e = eigSym3(JJt6); let n = e.vecs[2];
+  const o4 = jointT[WRIST[0].name]; if (dot3(n, sub3(p, [o4[12], o4[13], o4[14]])) < 0) n = scl3(n, -1);
+  analysis.n = n; analysis.e1 = e.vecs[0]; analysis.e2 = e.vecs[1];
+  analysis.cols = c123;
+  analysis.inplane = c123.map(c => { const m = Math.hypot(...c) || 1e-12, off = dot3(c, n); return Math.sqrt(Math.max(0, 1 - (off / m) * (off / m))); });
+  analysis.tauBlind = c123.map(c => dot3(c, n));
+  // full 6-D: joint torque = c_i . f + a_i . m   (c_i = a_i x (p - o_i))
+  const row6 = j => { const T = linkT[j.child], Tj = jointT[j.name];
+    const a = norm3([T[0] * j.axis[0] + T[4] * j.axis[1] + T[8] * j.axis[2], T[1] * j.axis[0] + T[5] * j.axis[1] + T[9] * j.axis[2], T[2] * j.axis[0] + T[6] * j.axis[1] + T[10] * j.axis[2]]);
+    return [...cross3(a, sub3(p, [Tj[12], Tj[13], Tj[14]])), ...a]; };
+  const Jw = WRIST.map(row6), Jb = BASE.map(row6);
+  const Te = linkT[EE], R = wrenchFrame === 'tool' ? [[Te[0], Te[1], Te[2]], [Te[4], Te[5], Te[6]], [Te[8], Te[9], Te[10]]] : [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  analysis.axes = R;
+  const tauN = (J, w) => Math.hypot(...J.map(r => r.reduce((acc, x, i) => acc + x * w[i], 0)));
+  analysis.comp = [];
+  for (let k = 0; k < 6; k++) { const w = [0, 0, 0, 0, 0, 0]; const ax = R[k % 3]; for (let i = 0; i < 3; i++) w[(k < 3 ? 0 : 3) + i] = ax[i];
+    analysis.comp.push({ kind: k < 3 ? 'push' : 'twist', axis: k % 3, w: tauN(Jw, w), b: tauN(Jb, w) }); }
+  const A = [...Array(6).keys()].map(r => [...Array(6).keys()].map(c => Jw.reduce((acc, row) => acc + row[r] * row[c], 0)));
+  const eg = eigSymN(A);
+  // canonical basis of the 3-D null space: ordered by twist content (b1 = purest push, b3 = most twist)
+  const N = eg.vecs.slice(3), Nm = [0, 1, 2].map(r => [0, 1, 2].map(c => N[r][3] * N[c][3] + N[r][4] * N[c][4] + N[r][5] * N[c][5]));
+  const em = eigSym3(Nm), toF = x => [dot3(R[0], x), dot3(R[1], x), dot3(R[2], x)];
+  analysis.blind = em.vecs.slice().reverse().map(cf => { const v = [0, 1, 2, 3, 4, 5].map(i => cf[0] * N[0][i] + cf[1] * N[1][i] + cf[2] * N[2][i]);
+    const nn = Math.hypot(...v) || 1, f = v.slice(0, 3).map(x => x / nn), mm = v.slice(3).map(x => x / nn);
+    return { f, m: mm, fF: toF(f), mF: toF(mm) }; });
+  // intent (torque view, force prior): tau_w = J456^T f  ->  f_est = (J456 J456^T)^+ J456 tau_w  ->  tau_b = J123^T f_est
+  if (intent.some(x => x !== 0)) {
+    const tw = norm3(intent), A = analysis.J456;                       // A columns = c4,c5,c6 ; tau_w = A^T f
+    const AAt = [0, 1, 2].map(r => [0, 1, 2].map(c => A[r][0] * A[c][0] + A[r][1] * A[c][1] + A[r][2] * A[c][2]));
+    const eA = eigSym3(AAt), Atw = mat3vec(A, tw), lmax = Math.max(eA.vals[0], 1e-12);
+    let f = [0, 0, 0];
+    eA.vals.forEach((l, i) => { if (l > 1e-6 * lmax) { const v = eA.vecs[i], s = dot3(v, Atw) / l; f = add3(f, scl3(v, s)); } });
+    const J = analysis.J123;
+    analysis.v = f; analysis.qd = [dot3([J[0][0], J[1][0], J[2][0]], f), dot3([J[0][1], J[1][1], J[2][1]], f), dot3([J[0][2], J[1][2], J[2][2]], f)];
+  } else { analysis.v = null; analysis.qd = null; }
+}
+
+
+function gridLines(f, n0, lo0, hi0, n1, lo1, hi1) { // wire surface: iso-lines in both params
+  const P = [];
+  for (let i = 0; i < n0; i++) { const r = []; for (let k = 0; k < n1; k++) r.push(f(lo0 + (hi0 - lo0) * i / (n0 - 1), lo1 + (hi1 - lo1) * k / (n1 - 1))); P.push(r); }
+  const out = [];
+  for (let i = 0; i < n0; i++) for (let k = 0; k < n1; k++) {
+    if (k + 1 < n1) out.push(...P[i][k], ...P[i][k + 1]);
+    if (i + 1 < n0) out.push(...P[i][k], ...P[i + 1][k]);
+  }
+  return out;
+}
+const lim = j => [j.lower == null ? -Math.PI : j.lower, j.upper == null ? Math.PI : j.upper];
+
+function sweep456() { // probe-point image of (q4,q5[,q6]) in joint4's pre-motion frame; independent of q1-3
+  const [j4, j5, j6] = WRIST, [l4, u4] = lim(j4), [l5, u5] = lim(j5), [l6, u6] = lim(j6);
+  const layers = Math.abs(probe.x) > 1e-6 ? [0, 0.25, 0.5, 0.75, 1].map(t => l6 + (u6 - l6) * t) : [q[j6.name]];
+  const pl = probeLocal(), out = [];
+  for (const q6 of layers) {
+    out.push(...gridLines((q4, q5) => {
+      const qm = { [j4.name]: q4, [j5.name]: q5, [j6.name]: q6 };
+      const r = fkPure(qm);
+      return M.xform(M.mul(invRigid(r.J[j4.name]), r.L[EE]), pl);
+    }, 25, l4, u4, 25, l5, u5));
+  }
+  uploadLines('sw456', out);
+}
+let sweep123Sig = '';
+function sweep123() { // probe-point image of (q1,q2,q3) with the wrist frozen, in the base frame
+  const sig = WRIST.map(j => q[j.name].toFixed(4)).join() + '|' + probe.x + ',' + probe.z;
+  if (sig === sweep123Sig) return; sweep123Sig = sig;
+  const [j1, j2, j3] = BASE, [l1, u1] = lim(j1), [l2, u2] = lim(j2), [l3, u3] = lim(j3);
+  const pl = probeLocal(), out = [], cur = [];
+  const sheet = (q1, dst, n) => dst.push(...gridLines((q2, q3) => {
+    const qm = { [j1.name]: q1, [j2.name]: q2, [j3.name]: q3 }; WRIST.forEach(j => { qm[j.name] = q[j.name]; });
+    return M.xform(fkPure(qm).L[EE], pl);
+  }, n, l2, u2, n, l3, u3));
+  for (let t = 0; t <= 4; t++) sheet(l1 + (u1 - l1) * t / 4, out, 9);
+  sheet(q[j1.name], cur, 17);
+  uploadLines('sw123', out); uploadLines('sw123cur', cur);
+}
+
+// ------------------------------------------------------------------ WebGL
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+if (!gl) {
+  const d = document.createElement('div'); d.className = 'nogl';
+  d.textContent = 'This viewer needs WebGL 2, which this browser has disabled or does not support.';
+  document.querySelector('.stage').appendChild(d);
+}
+
+function compile(vs, fs) {
+  const mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
+  const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name; u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+
+const MESH_VS = `#version 300 es
+precision highp float;
+layout(location=0) in vec3 a_pos;   // uint16 quantised
+layout(location=1) in vec3 a_nrm;   // int8 normalised
+uniform mat4 u_proj, u_view, u_model;
+uniform vec3 u_qmin, u_qscale;
+out vec3 v_nrm; out vec3 v_wpos;
+void main() {
+  vec3 p = u_qmin + a_pos * u_qscale;
+  vec4 w = u_model * vec4(p, 1.0);
+  v_wpos = w.xyz;
+  v_nrm = mat3(u_model) * a_nrm;
+  gl_Position = u_proj * u_view * w;
+}`;
+const MESH_FS = `#version 300 es
+precision highp float;
+in vec3 v_nrm; in vec3 v_wpos;
+uniform vec3 u_color, u_accent, u_sky, u_floor, u_cam;
+uniform float u_highlight;
+out vec4 o;
+void main() {
+  vec3 n = normalize(v_nrm);
+  vec3 V = normalize(u_cam - v_wpos);
+  if (dot(n, V) < 0.0) n = -n;
+  vec3 L1 = normalize(vec3(0.5, -0.7, 0.9));
+  vec3 L2 = normalize(vec3(-0.8, 0.4, 0.3));
+  vec3 base = mix(u_color, u_accent, u_highlight);
+  vec3 lin = base * base;
+  vec3 hemi = mix(u_floor * u_floor, u_sky * u_sky, n.z * 0.5 + 0.5) * 0.45;
+  float d1 = max(dot(n, L1), 0.0) * 0.55, d2 = max(dot(n, L2), 0.0) * 0.18;
+  float wrap = max(dot(n, L1) * 0.5 + 0.5, 0.0) * 0.12;
+  vec3 H = normalize(L1 + V);
+  float spec = pow(max(dot(n, H), 0.0), 48.0) * 0.12;
+  vec3 c = lin * (hemi + d1 + d2 + wrap) + spec;
+  float fres = pow(1.0 - max(dot(n, V), 0.0), 3.0) * 0.04;
+  c += fres;
+  o = vec4(sqrt(clamp(c, 0.0, 1.0)), 1.0);
+}`;
+const LINE_VS = `#version 300 es
+precision highp float;
+layout(location=0) in vec3 a_pos;
+uniform mat4 u_proj, u_view, u_model;
+void main() { gl_Position = u_proj * u_view * u_model * vec4(a_pos, 1.0); }`;
+const LINE_FS = `#version 300 es
+precision highp float;
+uniform vec4 u_color; out vec4 o;
+void main() { o = u_color; }`;
+
+let meshProg, lineProg;
+const meshes = {};   // link -> {vao, count, itype, qmin, qscale}
+const lineBufs = {}; // name -> {vao, count}
+
+function b64ToBuf(s) { const bin = atob(s); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a.buffer; }
+
+function uploadMeshes() {
+  for (const [link, m] of Object.entries(ROBOT.meshes)) {
+    const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, new Uint16Array(b64ToBuf(m.pos)), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.UNSIGNED_SHORT, false, 0, 0);
+    const nb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, nb); gl.bufferData(gl.ARRAY_BUFFER, new Int8Array(b64ToBuf(m.nrm)), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.BYTE, true, 0, 0);
+    const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
+    const idx = m.itype === 'u16' ? new Uint16Array(b64ToBuf(m.idx)) : new Uint32Array(b64ToBuf(m.idx));
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    meshes[link] = { vao, count: idx.length, itype: m.itype === 'u16' ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT, qmin: m.min, qscale: m.scale };
+  }
+}
+
+function makeLines(name, pts) {
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+  lineBufs[name] = { vao, buf: b, count: pts.length / 3 };
+}
+
+function uploadLines(name, pts) {
+  if (!lineBufs[name]) { makeLines(name, pts); return; }
+  gl.bindBuffer(gl.ARRAY_BUFFER, lineBufs[name].buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts), gl.DYNAMIC_DRAW);
+  lineBufs[name].count = pts.length / 3;
+}
+function buildStaticLines() {
+  const g = [], gm = [], ext = 1.0, step = 0.05;
+  for (let i = -20; i <= 20; i++) {
+    const v = i * step, tgt = (i % 5 === 0) ? gm : g;
+    tgt.push(-ext, v, 0, ext, v, 0, v, -ext, 0, v, ext, 0);
+  }
+  makeLines('grid', g); makeLines('gridMajor', gm);
+  const r = 0.03, ring = [];
+  for (let i = 0; i < 48; i++) {
+    const a0 = i / 48 * Math.PI * 2, a1 = (i + 1) / 48 * Math.PI * 2;
+    ring.push(r * Math.cos(a0), r * Math.sin(a0), 0, r * Math.cos(a1), r * Math.sin(a1), 0);
+  }
+  makeLines('ring', ring);
+  makeLines('axisZ', [0, 0, -0.045, 0, 0, 0.045]);
+  makeLines('axisX', [0, 0, 0, 0.06, 0, 0]);
+  makeLines('axisY', [0, 0, 0, 0, 0.06, 0]);
+  makeLines('axisZw', [0, 0, 0, 0, 0, 0.06]);
+}
+
+// ------------------------------------------------------------------ theme colours
+function cssColor(name) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const c = document.createElement('canvas').getContext('2d'); c.fillStyle = v; const h = c.fillStyle;
+  if (h[0] === '#') return [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
+  const m = h.match(/[\d.]+/g); return [m[0] / 255, m[1] / 255, m[2] / 255];
+}
+let theme = {};
+function readTheme() {
+  theme = { bg: cssColor('--bg'), mesh: cssColor('--mesh'), meshBase: cssColor('--mesh-base'), meshTip: cssColor('--mesh-tip'),
+            accent: cssColor('--accent'), blue: cssColor('--blue'), blind: cssColor('--blind'), grid: cssColor('--grid'), gridMajor: cssColor('--grid-major'), sky: cssColor('--sky'), floor: cssColor('--floor') };
+  requestDraw();
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTheme);
+new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// ------------------------------------------------------------------ camera
+const cam = { yaw: 0.65, pitch: 0.38, dist: 1.45, target: [0.10, 0.0, 0.30] };
+const CAM0 = JSON.parse(JSON.stringify(cam));
+function camEye() {
+  const cp = Math.cos(cam.pitch);
+  return add3(cam.target, [cam.dist * cp * Math.cos(cam.yaw), cam.dist * cp * Math.sin(cam.yaw), cam.dist * Math.sin(cam.pitch)]);
+}
+function resetView() { Object.assign(cam, JSON.parse(JSON.stringify(CAM0))); cam.target = CAM0.target.slice(); requestDraw(); }
+
+let drag = null;
+canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY, btn: e.button, shift: e.shiftKey, id: e.pointerId }; });
+canvas.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+  if (drag.btn === 0 && !drag.shift) {
+    cam.yaw -= dx * 0.008; cam.pitch = Math.max(-1.5, Math.min(1.5, cam.pitch + dy * 0.008));
+  } else {
+    const eye = camEye(), z = norm3(sub3(eye, cam.target)), x = norm3(cross3([0, 0, 1], z)), y = cross3(z, x);
+    const s = cam.dist * 0.0016;
+    cam.target = add3(cam.target, add3(scl3(x, -dx * s), scl3(y, dy * s)));
+  }
+  requestDraw();
+});
+const endDrag = e => { if (drag && e.pointerId === drag.id) drag = null; };
+canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = Math.max(0.15, Math.min(6, cam.dist * Math.exp(e.deltaY * 0.0012))); requestDraw(); }, { passive: false });
+// pinch zoom on touch
+const touches = new Map();
+canvas.addEventListener('touchstart', e => { for (const t of e.changedTouches) touches.set(t.identifier, [t.clientX, t.clientY]); }, { passive: true });
+canvas.addEventListener('touchmove', e => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const a = e.touches[0], b = e.touches[1], pa = touches.get(a.identifier), pb = touches.get(b.identifier);
+    if (pa && pb) {
+      const d0 = Math.hypot(pa[0] - pb[0], pa[1] - pb[1]), d1 = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      if (d0 > 0) cam.dist = Math.max(0.15, Math.min(6, cam.dist * d0 / d1));
+      drag = null; requestDraw();
+    }
+    touches.set(a.identifier, [a.clientX, a.clientY]); touches.set(b.identifier, [b.clientX, b.clientY]);
+  }
+}, { passive: false });
+canvas.addEventListener('touchend', e => { for (const t of e.changedTouches) touches.delete(t.identifier); }, { passive: true });
+window.addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') { if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') return; resetView(); } });
+
+// ------------------------------------------------------------------ draw
+let needDraw = true, activeJoint = null, showAxes = true, showGrid = true;
+function requestDraw() { needDraw = true; }
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.floor(canvas.clientWidth * dpr), h = Math.floor(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; requestDraw(); }
+}
+new ResizeObserver(() => { resize(); requestDraw(); }).observe(canvas);
+
+function drawLines(name, model, color) {
+  const l = lineBufs[name]; gl.bindVertexArray(l.vao);
+  gl.uniformMatrix4fv(lineProg.u.u_model, false, model); gl.uniform4fv(lineProg.u.u_color, color);
+  gl.drawArrays(gl.LINES, 0, l.count);
+}
+
+function draw() {
+  if (!needDraw || !gl) return; needDraw = false;
+  resize();
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(theme.bg[0], theme.bg[1], theme.bg[2], 1); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  const eye = camEye();
+  const proj = M.perspective(38 * Math.PI / 180, canvas.width / canvas.height, 0.02, 30);
+  const view = M.lookAt(eye, cam.target, [0, 0, 1]);
+
+  gl.useProgram(meshProg.p);
+  gl.uniformMatrix4fv(meshProg.u.u_proj, false, proj); gl.uniformMatrix4fv(meshProg.u.u_view, false, view);
+  gl.uniform3fv(meshProg.u.u_cam, eye); gl.uniform3fv(meshProg.u.u_accent, theme.accent);
+  gl.uniform3fv(meshProg.u.u_sky, theme.sky); gl.uniform3fv(meshProg.u.u_floor, theme.floor);
+  const hiLink = activeJoint ? activeJoint.child : null;
+  const hiSet = new Set();
+  if (activeJoint) { // the moved link and everything downstream of it
+    const stack = [activeJoint.child];
+    while (stack.length) { const l = stack.pop(); hiSet.add(l); for (const j of joints) if (j.parent === l) stack.push(j.child); }
+  }
+  for (const link of ROBOT.links) {
+    const m = meshes[link.name]; if (!m) continue;
+    const vis = link.mesh, model = M.mul(linkT[link.name], M.fromRT(M.rpy(...vis.rpy), vis.xyz));
+    gl.bindVertexArray(m.vao);
+    gl.uniformMatrix4fv(meshProg.u.u_model, false, model);
+    gl.uniform3fv(meshProg.u.u_qmin, m.qmin); gl.uniform3fv(meshProg.u.u_qscale, m.qscale);
+    const col = link.name === 'base_link' ? theme.meshBase : (link.name.startsWith('gripper') || link.name === 'flange_link') ? theme.meshTip : theme.mesh;
+    gl.uniform3fv(meshProg.u.u_color, col);
+    gl.uniform1f(meshProg.u.u_highlight, link.name === hiLink ? 0.55 : hiSet.has(link.name) ? 0.18 : 0.0);
+    gl.drawElements(gl.TRIANGLES, m.count, m.itype, 0);
+  }
+
+  gl.useProgram(lineProg.p);
+  gl.uniformMatrix4fv(lineProg.u.u_proj, false, proj); gl.uniformMatrix4fv(lineProg.u.u_view, false, view);
+  if (showGrid) {
+    drawLines('grid', M.ident(), [...theme.grid, 1]); drawLines('gridMajor', M.ident(), [...theme.gridMajor, 1]);
+    drawLines('axisX', M.ident(), [0.85, 0.3, 0.3, 1]); drawLines('axisY', M.ident(), [0.3, 0.7, 0.3, 1]); drawLines('axisZw', M.ident(), [0.3, 0.45, 0.9, 1]);
+  }
+  if (showAxes) {
+    gl.disable(gl.DEPTH_TEST);
+    for (const j of movable) {
+      const T = jointT[j.name]; if (!T) continue;
+      // frame whose z is the joint axis
+      const a = norm3(j.axis), ref = Math.abs(a[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+      const x = norm3(cross3(ref, a)), y = cross3(a, x);
+      const F = M.mul(T, M.fromRT([[x[0], y[0], a[0]], [x[1], y[1], a[1]], [x[2], y[2], a[2]]], [0, 0, 0]));
+      const on = activeJoint === j;
+      const c = on ? [...theme.accent, 1] : [...theme.accent, 0.45];
+      drawLines('axisZ', F, c);
+      if (on && j.type !== 'prismatic') drawLines('ring', F, c);
+    }
+    gl.enable(gl.DEPTH_TEST);
+  }
+  // --- wrist / base reach and ellipsoids
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  if (show456 && lineBufs.sw456) drawLines('sw456', jointT[WRIST[0].name], [...theme.accent, 0.5]);
+  if (show123 && lineBufs.sw123) { drawLines('sw123', M.ident(), [...theme.blue, 0.18]); drawLines('sw123cur', M.ident(), [...theme.blue, 0.7]); }
+  const labels = [];
+  if (showEll && analysis.n) {
+    gl.disable(gl.DEPTH_TEST);
+    const p = analysis.p, e1 = analysis.e1, e2 = analysis.e2, n = analysis.n, R = 0.075;
+    const fan = [...p], rim = [];
+    for (let i = 0; i <= 48; i++) { const a = i / 48 * 2 * Math.PI, pt = add3(p, add3(scl3(e1, R * Math.cos(a)), scl3(e2, R * Math.sin(a)))); fan.push(...pt); if (i < 48) { const b = (i + 1) / 48 * 2 * Math.PI; rim.push(...pt, ...add3(p, add3(scl3(e1, R * Math.cos(b)), scl3(e2, R * Math.sin(b))))); } }
+    uploadLines('disc', fan); { const l = lineBufs.disc; gl.bindVertexArray(l.vao); gl.uniformMatrix4fv(lineProg.u.u_model, false, M.ident()); gl.uniform4fv(lineProg.u.u_color, [...theme.accent, 0.22]); gl.drawArrays(gl.TRIANGLE_FAN, 0, l.count); }
+    uploadLines('discRim', rim); drawLines('discRim', M.ident(), [...theme.accent, 0.9]);
+    // blind line: double-headed, through the probe point
+    const L = 0.11, a0 = sub3(p, scl3(n, L)), a1 = add3(p, scl3(n, L));
+    uploadLines('blind', [...arrow(p, a1, n, true), ...arrow(p, a0, scl3(n, -1), true)]); drawLines('blind', M.ident(), [...theme.blind, 1]);
+    labels.push({ p: add3(a1, scl3(n, 0.02)), t: '✕ blind · J123 only', c: 'bld' });
+    // J1..J3 hand-motion directions
+    const mx = Math.max(...analysis.cols.map(c => Math.hypot(...c)), 1e-9), arr = [];
+    analysis.cols.forEach((c, i) => { const len = 0.13 * Math.hypot(...c) / mx, d = norm3(c), tip = add3(p, scl3(d, len)); arr.push(...arrow(p, tip, d)); labels.push({ p: add3(tip, scl3(d, 0.02)), t: 'J' + (i + 1), c: 'blu' }); });
+    uploadLines('jarr', arr); drawLines('jarr', M.ident(), [...theme.blue, 1]);
+    if (analysis.v) {
+      const v = norm3(analysis.v), tip = add3(p, scl3(v, 0.16));
+      uploadLines('arrow', arrow(p, tip, v)); drawLines('arrow', M.ident(), [...theme.accent, 1]);
+      labels.push({ p: add3(tip, scl3(v, 0.02)), t: 'f̂ estimate', c: 'acc' });
+    }
+    gl.enable(gl.DEPTH_TEST);
+  }
+  if (showWr && analysis.comp) {
+    gl.disable(gl.DEPTH_TEST);
+    const p = analysis.p, R = analysis.axes, names = ['x', 'y', 'z'];
+    const wmaxF = Math.max(...analysis.comp.slice(0, 3).map(c => c.w), 1e-9);
+    analysis.comp.forEach((c, k) => {
+      const ax = R[c.axis], t = Math.min(1, c.kind === 'push' ? c.w / wmaxF : c.w), blind = t < 0.15;
+      const cc = [0, 1, 2].map(i => theme.blind[i] + (theme.accent[i] - theme.blind[i]) * t).concat([1]);
+      const tag = blind ? ' ✕' : '';
+      if (c.kind === 'push') { const tip = add3(p, scl3(ax, 0.11)); uploadLines('wr' + k, arrow(p, tip, ax, blind)); labels.push({ p: add3(tip, scl3(ax, 0.018)), t: 'push ' + names[c.axis] + tag, c: blind ? 'bld' : 'acc' }); }
+      else { const r = 0.04; uploadLines('wr' + k, ring(p, ax, r, blind)); labels.push({ p: add3(p, scl3(ax, r * 1.35)), t: 'twist ' + names[c.axis] + tag, c: blind ? 'bld' : 'acc' }); }
+      drawLines('wr' + k, M.ident(), cc);
+    });
+    gl.enable(gl.DEPTH_TEST);
+  }
+  if (showBl && analysis.blind) {
+    gl.disable(gl.DEPTH_TEST);
+    const p = analysis.p;
+    analysis.blind.forEach((b, i) => {
+      const fl = Math.hypot(...b.f), ml = Math.hypot(...b.m), pts = [];
+      if (fl > 0.05) { const d = norm3(b.f), tip = add3(p, scl3(d, 0.11 * fl)); pts.push(...arrow(p, tip, d, true)); labels.push({ p: add3(tip, scl3(d, 0.018)), t: 'blind ' + (i + 1), c: 'bld' }); }
+      if (ml > 0.05) { const d = norm3(b.m); pts.push(...ring(p, d, 0.045 * ml, true)); if (fl <= 0.05) labels.push({ p: add3(p, scl3(d, 0.06 * ml)), t: 'blind ' + (i + 1), c: 'bld' }); }
+      uploadLines('bl' + i, pts); drawLines('bl' + i, M.ident(), [...theme.blind, 0.9]);
+    });
+    gl.enable(gl.DEPTH_TEST);
+  }
+  gl.disable(gl.BLEND);
+  placeLabels(labels, M.mul(proj, view));
+}
+function ring(c, axis, r, dashed) { // 300-degree arc around `axis` (right-hand rule) with an arrowhead at its end
+  const d = norm3(axis), ref = Math.abs(d[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], u = norm3(cross3(ref, d)), v = cross3(d, u), out = [], N = 40, span = Math.PI * 5 / 3;
+  const at = th => add3(c, add3(scl3(u, r * Math.cos(th)), scl3(v, r * Math.sin(th))));
+  for (let i = 0; i < N; i++) { if (dashed && i % 4 >= 2) continue; out.push(...at(span * i / N), ...at(span * (i + 1) / N)); }
+  const th = span, end = at(th), t = norm3(add3(scl3(u, -Math.sin(th)), scl3(v, Math.cos(th)))), rad = norm3(sub3(end, c));
+  const back = sub3(end, scl3(t, 0.014)); out.push(...end, ...add3(back, scl3(rad, 0.007)), ...end, ...add3(back, scl3(rad, -0.007)), ...end, ...add3(back, scl3(d, 0.007)), ...end, ...add3(back, scl3(d, -0.007)));
+  return out;
+}
+function arrow(a, b, d, dashed) { // line a->b with a 4-fin head pointing along unit d; dashed = shaft in 8 dashes
+  const ref = Math.abs(d[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], s1 = norm3(cross3(d, ref)), s2 = cross3(d, s1);
+  const back = sub3(b, scl3(d, 0.022)), h = 0.009, out = [];
+  if (dashed) { const n = 8; for (let i = 0; i < n; i++) { const t0 = i / n, t1 = (i + 0.55) / n; out.push(...add3(a, scl3(sub3(b, a), t0)), ...add3(a, scl3(sub3(b, a), t1))); } }
+  else out.push(...a, ...b);
+  out.push(...b, ...add3(back, scl3(s1, h)), ...b, ...add3(back, scl3(s1, -h)), ...b, ...add3(back, scl3(s2, h)), ...b, ...add3(back, scl3(s2, -h)));
+  return out;
+}
+const labelLayer = document.getElementById('labels');
+function placeLabels(list, PV) {
+  labelLayer.replaceChildren(...list.map(l => {
+    const x = PV[0] * l.p[0] + PV[4] * l.p[1] + PV[8] * l.p[2] + PV[12], y = PV[1] * l.p[0] + PV[5] * l.p[1] + PV[9] * l.p[2] + PV[13], w = PV[3] * l.p[0] + PV[7] * l.p[1] + PV[11] * l.p[2] + PV[15];
+    const el = document.createElement('span'); el.className = l.c; el.textContent = l.t;
+    if (w <= 0) { el.style.display = 'none'; return el; }
+    el.style.left = ((x / w * 0.5 + 0.5) * canvas.clientWidth) + 'px'; el.style.top = ((0.5 - y / w * 0.5) * canvas.clientHeight) + 'px';
+    return el;
+  }));
+}
+function loop() { draw(); requestAnimationFrame(loop); }
+
+// ------------------------------------------------------------------ UI
+const fmt = (v, d) => (Math.abs(v) < 5e-7 ? 0 : v).toFixed(d);
+const rows = {};
+function jointUI() {
+  const box = document.getElementById('joints');
+  movable.forEach((j, i) => {
+    const rev = j.type !== 'prismatic';
+    const unitScale = rev ? DEG : 1000, unit = rev ? '°' : 'mm', step = rev ? 0.1 : 0.5;
+    const lo = j.lower == null ? (rev ? -Math.PI : -0.1) : j.lower, hi = j.upper == null ? (rev ? Math.PI : 0.1) : j.upper;
+    const row = document.createElement('div'); row.className = 'joint'; row.dataset.joint = j.name;
+    row.innerHTML = `
+      <div class="name"><span class="idx">${rev ? 'J' + (i + 1) : 'Gripper'}</span><span class="jn mono">${j.name}</span><span class="kind">${j.type}</span></div>
+      <div class="val"><input type="text" inputmode="decimal" aria-label="${j.name} value"><span class="unit">${unit}</span></div>
+      <input class="slider" type="range" min="${lo * unitScale}" max="${hi * unitScale}" step="${step}" value="0" aria-label="${j.name}">
+      <div class="lim mono"><span>${fmt(lo * unitScale, rev ? 1 : 0)}${unit}</span><span class="rad">${rev ? fmt(lo, 3) + ' … ' + fmt(hi, 3) + ' rad' : fmt(lo, 3) + ' … ' + fmt(hi, 3) + ' m'}</span><span>${fmt(hi * unitScale, rev ? 1 : 0)}${unit}</span></div>`;
+    const slider = row.querySelector('.slider'), num = row.querySelector('.val input');
+    const setFromUI = v => { v = Math.max(lo, Math.min(hi, v)); q[j.name] = v; update(); };
+    slider.addEventListener('input', () => setFromUI(parseFloat(slider.value) / unitScale));
+    num.addEventListener('change', () => { const v = parseFloat(num.value); if (isFinite(v)) setFromUI(v / unitScale); else update(); });
+    num.addEventListener('keydown', e => { if (e.key === 'Enter') num.blur(); });
+    const act = () => { activeJoint = j; document.querySelectorAll('.joint.active').forEach(r => r.classList.remove('active')); row.classList.add('active'); requestDraw(); };
+    row.addEventListener('pointerenter', act); slider.addEventListener('focus', act); num.addEventListener('focus', act);
+    box.appendChild(row);
+    rows[j.name] = { slider, num, unitScale, rev, lo, hi };
+  });
+  box.addEventListener('pointerleave', () => { if (!document.activeElement || !box.contains(document.activeElement)) { activeJoint = null; document.querySelectorAll('.joint.active').forEach(r => r.classList.remove('active')); requestDraw(); } });
+  document.getElementById('jcount').textContent = `${movable.length} movable · ${joints.length} total`;
+}
+
+function rpyFromR(m) { // ZYX euler from column-major mat4 -> [roll, pitch, yaw]
+  const r00 = m[0], r10 = m[1], r20 = m[2], r21 = m[6], r22 = m[10];
+  const p = Math.atan2(-r20, Math.hypot(r00, r10));
+  return [Math.atan2(r21, r22), p, Math.atan2(r10, r00)];
+}
+
+let qtextDirty = false;
+function update() {
+  fk();
+  for (const j of movable) {
+    const r = rows[j.name], v = q[j.name];
+    r.slider.value = v * r.unitScale;
+    if (document.activeElement !== r.num) r.num.value = fmt(v * r.unitScale, r.rev ? 1 : 1);
+  }
+  const eeName = linkT['gripper_base'] ? 'gripper_base' : joints[joints.length - 1].child;
+  const T = linkT[eeName], p = [T[12], T[13], T[14]], e = rpyFromR(T);
+  document.getElementById('eepos').textContent = p.map(x => fmt(x * 1000, 1).padStart(7)).join(' ');
+  document.getElementById('eerpy').textContent = e.map(x => fmt(x * DEG, 1).padStart(7)).join(' ');
+  if (!qtextDirty) document.getElementById('qtext').value = '[' + movable.map(j => fmt(q[j.name], 4)).join(', ') + ']';
+  if (gl) { jacobians(); if (show123) sweep123(); senseUI(); }
+  requestDraw();
+}
+
+function senseUI() {
+  const rows = document.querySelectorAll('#jtab tr');
+  analysis.inplane.forEach((f, i) => { const td = rows[i].children;
+    td[1].innerHTML = '<span class="bar" style="width:' + Math.round(f * 40) + 'px"></span>' + Math.round(f * 100) + '%';
+    td[2].textContent = (analysis.tauBlind[i] >= 0 ? '+' : '−') + fmt(Math.abs(analysis.tauBlind[i]), 3); });
+  const wrows = document.querySelectorAll('#wtab tr'), wmaxF = Math.max(...analysis.comp.slice(0, 3).map(c => c.w), 1e-9);
+  analysis.comp.forEach((c, k) => { const td = wrows[k].children, t = Math.min(1, c.kind === 'push' ? c.w / wmaxF : c.w);
+    td[1].innerHTML = '<span class="bar" style="width:' + Math.round(t * 34) + 'px;background:' + (t < 0.15 ? 'var(--blind)' : 'var(--accent)') + '"></span>' + fmt(c.w, 3);
+    td[2].textContent = fmt(c.b, 3); });
+  const fmtv = v => '[' + v.map(x => fmt(x, 2).padStart(5)).join(' ') + ']';
+  document.getElementById('blindlist').replaceChildren(...analysis.blind.flatMap((b, i) => {
+    const fl = Math.hypot(...b.fF), ml = Math.hypot(...b.mF), kind = ml < 0.05 ? 'pure push' : fl < 0.05 ? 'pure twist' : 'push + twist';
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = 'b' + (i + 1) + ' · ' + kind;
+    const v = document.createElement('span'); v.textContent = 'f ' + fmtv(b.fF) + '  m ' + fmtv(b.mF);
+    return [k, v]; }));
+  document.getElementById('sigratio').textContent = fmt(analysis.sig456[2] / Math.max(analysis.sig456[0], 1e-9), 4);
+  const cells = document.querySelectorAll('#dir123 > div');
+  if (analysis.qd) {
+    const qd = analysis.qd, mx = Math.max(...qd.map(Math.abs), 1e-9);
+    qd.forEach((x, i) => { const sEl = cells[i].querySelector('.s'), mEl = cells[i].querySelector('.m');
+      const small = Math.abs(x) < 0.05 * mx; sEl.textContent = small ? '·' : (x > 0 ? '+' : '−'); sEl.classList.toggle('zero', small); mEl.textContent = fmt(x, 2) + ' per N·m'; });
+    const v = analysis.v, n = Math.hypot(...v);
+    document.getElementById('vtext').textContent = 'f̂ (base frame) = [' + norm3(v).map(x => fmt(x, 2)).join(', ') + ']  per unit wrist torque: ' + fmt(n, 2) + ' N per N·m';
+  } else {
+    cells.forEach(c => { c.querySelector('.s').textContent = '·'; c.querySelector('.s').classList.add('zero'); c.querySelector('.m').textContent = ''; });
+    document.getElementById('vtext').textContent = 'Pick a wrist deflection above.';
+  }
+}
+
+function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; clearTimeout(t._h); t._h = setTimeout(() => { t.textContent = ''; }, 1800); }
+
+document.getElementById('zero').addEventListener('click', () => { movable.forEach(j => { q[j.name] = 0; }); update(); toast('All joints set to 0'); });
+document.getElementById('copyq').addEventListener('click', async () => {
+  const s = '[' + movable.map(j => fmt(q[j.name], 6)).join(', ') + ']';
+  try { await navigator.clipboard.writeText(s); toast('Copied ' + s); } catch (err) { document.getElementById('qtext').select(); toast('Select and copy from the box below'); }
+});
+const qtext = document.getElementById('qtext');
+qtext.addEventListener('focus', () => { qtextDirty = true; });
+qtext.addEventListener('blur', () => { qtextDirty = false; update(); });
+qtext.addEventListener('input', () => {
+  const nums = (qtext.value.match(/-?\d+(?:\.\d+)?(?:e-?\d+)?/gi) || []).map(Number);
+  if (nums.length < movable.length) return;
+  movable.forEach((j, i) => { const r = rows[j.name]; q[j.name] = Math.max(r.lo, Math.min(r.hi, nums[i])); });
+  const keep = qtextDirty; qtextDirty = true; update(); qtextDirty = keep;
+});
+document.getElementById('sw456').addEventListener('change', e => { show456 = e.target.checked; requestDraw(); });
+document.getElementById('sw123').addEventListener('change', e => { show123 = e.target.checked; if (show123) sweep123(); requestDraw(); });
+document.getElementById('swwr').addEventListener('change', e => { showWr = e.target.checked; requestDraw(); });
+document.getElementById('swbl').addEventListener('change', e => { showBl = e.target.checked; requestDraw(); });
+document.getElementById('wframe').addEventListener('change', e => { wrenchFrame = e.target.value; update(); });
+document.getElementById('swell').addEventListener('change', e => { showEll = e.target.checked; requestDraw(); });
+const probeInput = (id, key) => { const el = document.getElementById(id); el.addEventListener('change', () => { const v = parseFloat(el.value); if (isFinite(v)) probe[key] = v / 1000; el.value = fmt(probe[key] * 1000, 0); sweep456(); update(); }); el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); }); };
+probeInput('pz', 'z'); probeInput('px', 'x');
+document.querySelectorAll('.tri').forEach(tri => { const i = +tri.dataset.j; tri.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  intent[i] = +b.dataset.v; tri.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); update(); })); });
+document.getElementById('axes').addEventListener('change', e => { showAxes = e.target.checked; requestDraw(); });
+document.getElementById('grid').addEventListener('change', e => { showGrid = e.target.checked; requestDraw(); });
+
+// ------------------------------------------------------------------ boot
+document.getElementById('title').textContent = ROBOT.name.replace('piper_x', 'PiPER-X');
+document.getElementById('urdfname').textContent = ROBOT.urdf;
+document.getElementById('tris').textContent = ROBOT.ntris.toLocaleString();
+jointUI();
+if (gl) {
+  meshProg = compile(MESH_VS, MESH_FS); lineProg = compile(LINE_VS, LINE_FS);
+  uploadMeshes(); buildStaticLines(); sweep456();
+  readTheme(); update(); loop();
+}
+</script>
