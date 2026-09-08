@@ -84,6 +84,45 @@ static sweep brackets breakaway in both directions: friction is the
 half-difference, the gravity residual is the half-sum (free model check).
 `--fric-scale` (default 0.8) must stay below 1 or joints creep.
 
+## Per-joint gravity bias (`gravity_cal.py`)
+
+Both breakaway brackets (friction_cal static rows, tool_id torque) record `(u+ + u-)/2`, the
+torque the model is missing at that pose in t_ff units. After the tool fit, what is left on
+J1 and J3 is a CONSTANT per joint (J3 -0.37 N.m, J1 +0.19, no correlation with load or
+pose) - which for a Coulomb model is the same thing as direction-asymmetric friction, and
+is compensated identically: `tau_ff = scale * g(q) + bias` (b601's g_scale/g_bias).
+
+```bash
+python examples/gravity_cal.py        # reads friction_cal.csv + tool_torque.npz -> data/gravity_cal.npz
+python examples/drag_mode.py --tool data/tool_body.npz --gravity data/gravity_cal.npz --friction data/friction_model.npz
+```
+
+Because the bias absorbs the asymmetry, friction_cal's static levels are symmetric. Re-run
+gravity_cal after any new friction_cal or tool_id data.
+
+## Balanced drag (inertia shaping, port of b601_teleop)
+
+```bash
+python examples/drag_mode.py --tool data/tool_body.npz --gravity data/gravity_cal.npz \
+       --friction data/friction_model.npz --balance 0 --serve   # observe only: watch r, no output
+python examples/drag_mode.py ... --balance 1 --serve      # arm up to 2x lighter, live sliders
+```
+
+`piperx_teleop.dynamics.ArmDynamics` (Pinocchio, `pip install pin` in piperctl) gives
+M(q), C(q, qd) and the tool Jacobian with the same gravity as PiperModel; the tool file
+becomes one rigid body on link6, tcp = flange + `--tcp` (0.19 m, fingertips).
+`piperx_teleop.balance.BalancedDrag` is b601's law: momentum observer for the hand torque
+(no torque sensor - positions and the commanded t_ff only), then `tau += K r_net` with
+`K = M Md^-1 - I`, `Md = J^T Lam_d J`, eigenvalues clipped to `[-kappa/(1+kappa), kappa]`,
+so heavy directions are assisted and the folding wrist is resisted. Ramp 2 s, singularity
+fade cond(J) 60-120, per-joint caps, runaway detector (KE rising with no hand power halves
+the gain). kappa <= 2 is the stability ceiling. Friction stays in FrictionComp; its
+feed-forward enters r_net exactly as in b601.
+
+First run: `--balance 0` and check that r is ~0 at rest and follows your hand; then 0.5,
+then 1. Watch `alpha` (ramp x singularity x trips) and `cond(J)` on the panel. The
+TorqueSession velocity watchdog (3 rad/s) still ends the session if the arm gets away.
+
 ## Admittance demo (not a working teleop mode)
 
 ```bash

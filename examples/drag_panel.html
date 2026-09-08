@@ -60,9 +60,23 @@
     <p class="note">Above the real friction a joint self-drives. The levels are conservative, but if a joint runs away, pull the slider down first and press the e-stop second.</p>
     <p class="status" id="status">connecting…</p>
   </div>
+  <div class="card" id="balcard" hidden>
+    <h1 style="font-size:16px">Inertia shaping (balanced drag)</h1>
+    <p class="sub">The arm is made to feel like one isotropic virtual mass at the tool. kappa = max lightening ratio minus one; 0 = observe only.</p>
+    <div class="row" style="margin-top:12px"><div class="big" id="kval" style="font-size:32px">0.0</div>
+      <input type="range" id="kappa" min="0" max="2" step="0.1" value="0"></div>
+    <div class="ticks"><span>0 = off (observe)</span><span>kappa</span><span>2 = 3x lighter</span></div>
+    <div class="row" style="margin-top:12px"><div class="big" id="mval" style="font-size:24px;color:var(--ink)">1.00 kg</div>
+      <input type="range" id="md" min="0.3" max="5" step="0.1" value="1"></div>
+    <div class="ticks"><span>0.3 kg</span><span>virtual mass at the tool</span><span>5 kg</span></div>
+    <div class="row" style="margin-top:12px"><div class="big" id="ival" style="font-size:24px;color:var(--ink)">0.020</div>
+      <input type="range" id="irot" min="0.005" max="0.2" step="0.005" value="0.02"></div>
+    <div class="ticks"><span>0.005</span><span>virtual rotational inertia, kg·m²</span><span>0.2</span></div>
+    <p class="status" id="balstatus">–</p>
+  </div>
   <div class="card">
     <table>
-      <thead><tr><th>joint</th><th>q (deg)</th><th>qdot (rad/s)</th><th>gravity (N·m)</th><th>friction ff (N·m)</th><th style="text-align:left;width:34%">friction ff, ±0.6</th></tr></thead>
+      <thead><tr><th>joint</th><th>q (deg)</th><th>qdot (rad/s)</th><th>gravity (N·m)</th><th>friction ff (N·m)</th><th>hand est. r (N·m)</th><th>shaping (N·m)</th><th style="text-align:left;width:26%">friction ff, ±0.6</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
     <p class="note">Blue bar: friction feed-forward in the direction of motion. Orange: the value exceeds 0.6 N·m, off scale.</p>
@@ -82,7 +96,7 @@ slider.addEventListener('input',()=>{ show(slider.value); });
 slider.addEventListener('change',()=>send(slider.value));
 slider.addEventListener('input',()=>{ clearTimeout(slider._t); slider._t=setTimeout(()=>send(slider.value),120); });
 document.querySelectorAll('.presets button').forEach(b=>b.addEventListener('click',()=>send(b.dataset.v)));
-for(let j=0;j<6;j++){ const tr=document.createElement('tr'); tr.innerHTML='<td>J'+(j+1)+'</td><td></td><td></td><td></td><td></td><td><div class="bar"><b></b><i></i></div></td>'; rows.appendChild(tr); }
+for(let j=0;j<6;j++){ const tr=document.createElement('tr'); tr.innerHTML='<td>J'+(j+1)+'</td><td></td><td></td><td></td><td></td><td></td><td></td><td><div class="bar"><b></b><i></i></div></td>'; rows.appendChild(tr); }
 function fmt(x,d){ return x==null?'–':Number(x).toFixed(d); }
 async function poll(){
   try{
@@ -96,11 +110,27 @@ async function poll(){
       td[2].textContent = s.qdot? fmt(s.qdot[j],3):'–';
       td[3].textContent = s.gravity? fmt(s.gravity[j],2):'–';
       td[4].textContent = s.fric_ff? fmt(s.fric_ff[j],3):'–';
-      const f = s.fric_ff? s.fric_ff[j]:0, i=td[5].querySelector('i'), w=Math.min(Math.abs(f)/0.6,1)*50;
+      td[5].textContent = (s.balance&&s.balance.r)? fmt(s.balance.r[j],3):'–';
+      td[6].textContent = (s.balance&&s.balance.tau_bal)? fmt(s.balance.tau_bal[j],3):'–';
+      const f = s.fric_ff? s.fric_ff[j]:0, i=td[7].querySelector('i'), w=Math.min(Math.abs(f)/0.6,1)*50;
       i.style.width=w+'%'; i.style.left=(f>=0?50:50-w)+'%'; i.className=Math.abs(f)>0.6?'warm':'';
     }
   }catch(e){ status.textContent='session offline'; }
 }
+// ---- balance controls
+const kappa=document.getElementById('kappa'), kval=document.getElementById('kval'), md=document.getElementById('md'), mval=document.getElementById('mval'),
+      irot=document.getElementById('irot'), ival=document.getElementById('ival'), balcard=document.getElementById('balcard'), balstatus=document.getElementById('balstatus');
+let balHold=0;
+function sendBal(p,v){ balHold=Date.now()+800; fetch('/set?p='+p+'&v='+v).then(r=>r.json()).then(o=>{ if(!o.ok) balstatus.textContent='rejected'; }).catch(()=>{}); }
+function wire(el,label,fmtf,p){ el.addEventListener('input',()=>{ label.textContent=fmtf(el.value); balHold=Date.now()+800; clearTimeout(el._t); el._t=setTimeout(()=>sendBal(p,el.value),120); }); }
+wire(kappa,kval,v=>Number(v).toFixed(1),'kappa'); wire(md,mval,v=>Number(v).toFixed(2)+' kg','md'); wire(irot,ival,v=>Number(v).toFixed(3),'irot');
+const pollBase=poll;
+poll=async function(){ await pollBase();
+  try{ const s=await (await fetch('/state')).json(); const b=s.balance;
+    if(!b){ balcard.hidden=true; return; } balcard.hidden=false;
+    if(Date.now()>balHold){ kappa.value=b.kappa; kval.textContent=b.kappa.toFixed(1); md.value=b.m_d; mval.textContent=b.m_d.toFixed(2)+' kg'; irot.value=b.i_rot; ival.textContent=b.i_rot.toFixed(3); }
+    balstatus.innerHTML='alpha (ramp·singularity·trips) <b>'+b.alpha.toFixed(2)+'</b> · cond(J) <b>'+b.cond.toFixed(0)+'</b> · runaway trips <b>'+b.trips+'</b>'+(b.trips?' <span class="off">gain halved</span>':'');
+  }catch(e){} };
 setInterval(poll,100); poll();
 </script>
 </body>

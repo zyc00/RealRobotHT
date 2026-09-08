@@ -465,19 +465,11 @@ def cmd_fit(a):
 
     out["static_f0"], out["static_mu"], n_st = fit_kind("static")
     st_rows_all = [r for r in rows if r["kind"] == "static"]
-    # per-direction levels: u+ and u- each carry the gravity residual at the pose, so a
-    # direction split is REAL only on joints that carry no gravity (J1, mostly J6). On loaded
-    # joints the split is model error (J3 read +0.15 / -1.34 for a symmetric 0.8) -> symmetric.
-    st_rows = [r for r in rows if r["kind"] == "static"]
-    gmax = np.max([gabs(Q(r)) for r in st_rows], axis=0) if st_rows else np.zeros(6)
+    # per-direction levels are SYMMETRIC on purpose: for a Coulomb model, direction-asymmetric
+    # friction (F+ != F-) is identical to symmetric friction (F+ + F-)/2 plus a constant torque
+    # -(F+ - F-)/2, and that constant is exactly the (u+ + u-)/2 "gravity residual" column, which
+    # examples/gravity_cal.py fits as a per-joint bias. Splitting here as well would count it twice.
     out["static_pos"] = out["static_f0"].copy(); out["static_neg"] = out["static_f0"].copy()
-    for kind, key in (("static_pos", "static_pos"), ("static_neg", "static_neg")):
-        rs = [r for r in rows if r["kind"] == kind]
-        if rs:
-            Fm = np.array([F(r, "f%d") for r in rs])
-            lvl = np.nanmin(Fm, axis=0)
-            split = gmax < 0.15
-            out[key][split] = lvl[split]
     st_rows = [r for r in rows if r["kind"] == "static"]
     if st_rows:
         Fm = np.array([F(r, "f%d") for r in st_rows]); Rm = np.array([F(r, "resid%d") for r in st_rows])
