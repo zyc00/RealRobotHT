@@ -44,9 +44,10 @@ ap.add_argument("--duration", type=float, default=0.0, help="seconds; 0 = until 
 ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
 ap.add_argument("--can", default="can0")
 ap.add_argument("--payload-mass", type=float, default=0.0, help="kg on the gripper")
+ap.add_argument("--tool", default=None, help="tool file from examples/tool_id.py (mass+COM past joint 6)")
 a = ap.parse_args()
 
-gc = GravityCompensator(can=a.can, payload_mass=a.payload_mass)
+gc = GravityCompensator(can=a.can, payload_mass=a.payload_mass, tool=a.tool)
 print("pose (deg)   :", np.degrees(gc.q()).round(1))
 print("gravity (N.m):", gc.gravity().round(2))
 if not a.yes:

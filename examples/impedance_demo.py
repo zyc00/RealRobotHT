@@ -45,10 +45,11 @@ ap.add_argument("--kd", type=float, default=0.8, help="damping")
 ap.add_argument("--wander", action="store_true",
                 help="tour a few waypoints compliantly instead of holding")
 ap.add_argument("--can", default="can0")
+ap.add_argument("--tool", default=None, help="tool file from examples/tool_id.py (mass+COM past joint 6)")
 a = ap.parse_args()
 
 kp = a.kp if a.kp is not None else [15.0, 15.0, 8.0, 5.0, 5.0, 2.0]
-imp = JointImpedance(can=a.can, kp=kp, kd=a.kd)
+imp = JointImpedance(can=a.can, kp=kp, kd=a.kd, tool=a.tool)
 q0 = imp.q()
 print("pose (deg):", np.degrees(q0).round(1))
 print("kp:", imp.kp.round(1), " kd:", imp.kd.round(2))
