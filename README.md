@@ -135,6 +135,21 @@ fade cond(J) 60-120, per-joint caps, runaway detector (KE rising with no hand po
 the gain). kappa <= 2 is the stability ceiling. Friction stays in FrictionComp; its
 feed-forward enters r_net exactly as in b601.
 
+Two Piper deviations from b601, both from the J1-runaway on 2026-09-08: the friction relief
+is NOT fed into the shaping input (b601's `r_net = r_db + f_ff` multiplied the relief by
+1+kappa on assisted joints; `--balance-relief` restores it) and the shaping matrix rows are
+bounded to sum <= kappa (`--balance-coupling bounded`, default; K is not symmetric and J1's
+row carried 3.7x of J5's estimate, so wrist motion alone drove J1; `full` = b601, `diag` =
+no redistribution at all). The runaway detector judges hand power from the hand estimate.
+
+The observer is FRICTION-AWARE (2026-09-09): beta = g - C^T qd + F_model(qd), so r estimates
+the hand alone. Without it r = hand - friction, and on a coasting joint the shaping braked
+with kappa x friction - a relay against a compliant hand (J2 hunted at 1-1.5 Hz in the logs).
+`--kd` adds linear joint damping (paper D_min, b601 kd_drag; live multiplier on the panel):
+the saturating Cartesian damper is a passivity guard, flat above vsat, and does not damp the
+hand-arm resonance of a lightened heavy joint. Log with `--log` and read it with
+`examples/log_analyze.py` before tuning further.
+
 First run: `--balance 0` and check that r is ~0 at rest and follows your hand; then 0.5,
 then 1. Watch `alpha` (ramp x singularity x trips) and `cond(J)` on the panel. The
 TorqueSession velocity watchdog (3 rad/s) still ends the session if the arm gets away.

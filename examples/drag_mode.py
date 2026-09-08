@@ -54,9 +54,19 @@ ap.add_argument("--balance", type=float, default=None, metavar="KAPPA",
                 help="inertia shaping (b601 balanced drag): max lightening ratio minus one, 0..2; 0 = observe only")
 ap.add_argument("--balance-md", type=float, default=1.0, help="virtual mass at the tool centre, kg")
 ap.add_argument("--balance-irot", type=float, default=0.02, help="virtual rotational inertia about the tool x/y, kg.m^2")
+ap.add_argument("--balance-iroll", type=float, default=None, help="virtual roll inertia about the tool z (J6); default = J6's own, i.e. roll left natural")
+ap.add_argument("--balance-coupling", choices=("bounded", "full", "diag"), default="bounded",
+                help="shaping matrix coupling: bounded (row sums <= kappa, default), full (b601), diag (per joint)")
+ap.add_argument("--balance-relief", action="store_true",
+                help="b601 behaviour: feed the friction relief into the shaping input too (off by default)")
 ap.add_argument("--balance-damp", type=float, nargs=2, default=(0.0, 0.0), metavar=("T", "R"),
                 help="saturating Cartesian damping (N.s/m, N.m.s/rad), the passivity guard; 0 0 = off")
 ap.add_argument("--tcp", type=float, default=0.19, help="tool centre along the flange z, m (fingertips ~0.19)")
+ap.add_argument("--balance-fo", type=float, default=3.0, help="observer bandwidth Ko/2pi, Hz (lower = more phase margin)")
+ap.add_argument("--balance-fr", type=float, default=15.0, help="low-pass on the hand estimate r, Hz (0 = off)")
+ap.add_argument("--log", default=None, metavar="FILE.npz", help="save per-tick telemetry for offline analysis")
+ap.add_argument("--kd", type=float, nargs=6, default=None, metavar="KD",
+                help="linear joint damping N.m.s/rad per joint (paper D_min, b601 kd_drag); e.g. 0.2 0.6 0.4 0.05 0.03 0.02")
 ap.add_argument("--damp", type=float, nargs=2, default=None, metavar=("T", "R"),
                 help="passivity-aware Cartesian damping WITHOUT shaping (N.s/m, N.m.s/rad), paper eq 35")
 ap.add_argument("--damp-vsat", type=float, default=0.15, help="damping saturation knee, rad/s")
@@ -71,14 +81,18 @@ if a.balance is not None or a.damp is not None or a.fric_kappa0 > 0:
     dyn = ArmDynamics(tool=a.tool, tcp_offset=a.tcp, gravity=a.gravity)
 if a.balance is not None:
     d_t, d_r = a.damp if a.damp is not None else a.balance_damp
-    bal = BalancedDrag(dyn, kappa=a.balance, m_d=a.balance_md, i_rot=a.balance_irot,
-                       damp_t=d_t, damp_r=d_r, damp_vsat=a.damp_vsat)
+    bal = BalancedDrag(dyn, kappa=a.balance, m_d=a.balance_md, i_rot=a.balance_irot, i_roll=a.balance_iroll,
+                       damp_t=d_t, damp_r=d_r, damp_vsat=a.damp_vsat,
+                       relief_in_shaping=a.balance_relief, coupling=a.balance_coupling,
+                       f_o=a.balance_fo, f_r=a.balance_fr)
 elif a.damp is not None or a.fric_kappa0 > 0:
     d_t, d_r = a.damp if a.damp is not None else (0.0, 0.0)
     damping = CartesianDamping(dyn, d_t, d_r, a.damp_vsat)
 gc = GravityCompensator(can=a.can, payload_mass=a.payload_mass, tool=a.tool,
                         friction=a.friction, fric_scale=a.fric_scale, balance=bal, gravity=a.gravity,
-                        damping=damping, fric_sigma_v=a.fric_sigma_v, fric_kappa0=a.fric_kappa0)
+                        damping=damping, fric_sigma_v=a.fric_sigma_v, fric_kappa0=a.fric_kappa0, log=a.log, kd=a.kd)
+if a.kd:
+    print("linear joint damping kd:", a.kd)
 if gc.damping is not None and gc.fric is not None and (gc.damping.d_t > 0 or gc.damping.d_r > 0):
     import numpy as _np
     q0 = gc.q(); Jd = dyn.jacobian(q0, "local"); Md = dyn.mass_matrix(q0)
@@ -96,8 +110,9 @@ if gc.fric is not None:
     print(gc.fric.summary())
 if bal is not None:
     print("balanced drag: kappa %.2f (arm up to %.1fx lighter), virtual mass %.2f kg, i_rot %.3f, "
-          "damping %s, tcp %.2f m%s" % (bal.kappa, 1 + bal.kappa, bal.lam_d[0], bal.lam_d[3],
-                                        a.balance_damp, a.tcp, "  [OBSERVE ONLY]" if bal.kappa == 0 else ""))
+          "coupling %s, relief-in-shaping %s, tcp %.2f m%s" % (
+              bal.kappa, 1 + bal.kappa, bal.lam_d[0], bal.lam_d[3], bal.coupling, bal.relief_in_shaping,
+              a.tcp, "  [OBSERVE ONLY]" if bal.kappa == 0 else ""))
 if a.serve is not None:
     if gc.fric is None and bal is None and damping is None:
         ap.error("--serve needs --friction, --damp and/or --balance (the panel controls those layers)")
@@ -110,3 +125,5 @@ if not a.yes:
     input(">>> ENTER to go compliant - the arm will be freely draggable ")
 trip = gc.run(duration=a.duration)
 print("position hold restored" + (" (%s)" % trip if trip else ""))
+if a.log and gc.save_log():
+    print("telemetry saved to %s (%d ticks)" % (a.log, len(gc._log)))

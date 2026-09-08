@@ -40,6 +40,7 @@
   .presets{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
   button{background:var(--accent-soft);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;font:inherit}
   button:hover{border-color:var(--accent)}
+  button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   .note{font-size:12px;color:var(--muted);margin-top:8px}
 </style>
 </head>
@@ -72,6 +73,11 @@
     <div class="row" style="margin-top:10px"><div class="big" id="vsval" style="font-size:24px;color:var(--ink)">0.15</div>
       <input type="range" id="damp_vsat" min="0.08" max="0.3" step="0.01" value="0.15"></div>
     <div class="ticks"><span>0.08 = v0</span><span>saturation knee vsat, rad/s (felt drag caps at d·vsat)</span><span>0.3</span></div>
+    <div class="row" style="margin-top:14px"><div class="big" id="kdval" style="font-size:24px;color:var(--ink)">×1.0</div>
+      <input type="range" id="kd_scale" min="0" max="3" step="0.1" value="1"></div>
+    <div class="ticks"><span>0 = off</span><span>linear joint damping (D_min, --kd vector) multiplier</span><span>×3</span></div>
+    <div id="kdrows" style="margin-top:6px"></div>
+    <p class="note" id="kdnote">Linear damping per joint, N·m·s/rad (paper D_min). Works with --balance or --damp; the multiplier above scales all six.</p>
     <div class="row" style="margin-top:14px"><div class="big" id="svval" style="font-size:24px;color:var(--ink)">off</div>
       <input type="range" id="sigma_v" min="0" max="0.3" step="0.01" value="0"></div>
     <div class="ticks"><span>off</span><span>eq 36 velocity knee sigma_v, rad/s</span><span>0.3</span></div>
@@ -92,6 +98,13 @@
     <div class="row" style="margin-top:12px"><div class="big" id="ival" style="font-size:24px;color:var(--ink)">0.020</div>
       <input type="range" id="irot" min="0.005" max="0.2" step="0.005" value="0.02"></div>
     <div class="ticks"><span>0.005</span><span>virtual rotational inertia, kg·m²</span><span>0.2</span></div>
+    <div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">
+      <span class="sub" style="min-width:110px">shaping matrix</span>
+      <button class="seg" data-c="bounded">bounded</button><button class="seg" data-c="full">full (b601)</button><button class="seg" data-c="diag">diag</button>
+      <span class="sub" style="margin-left:14px">relief in shaping</span>
+      <button id="reliefbtn">off</button>
+    </div>
+    <p class="note">bounded: rows of K sum to ≤ kappa (default). full: b601's exact K, eigenvalues clipped only. diag: per-joint, no redistribution. Switching re-ramps over 2 s. Relief-in-shaping is b601's r_net = r + f_ff; it multiplied J1's friction relief.</p>
     <p class="status" id="balstatus">–</p>
   </div>
   <div class="card">
@@ -137,26 +150,37 @@ async function poll(){
     }
   }catch(e){ status.textContent='session offline'; }
 }
+// ---- per-joint linear damping sliders
+const KDMAX=[2,4,3,0.6,0.4,0.3], kdrows=document.getElementById('kdrows'); let kdHold=0;
+for(let j=0;j<6;j++){ const row=document.createElement('div'); row.className='row'; row.style.marginTop='4px';
+  row.innerHTML='<span class="sub" style="min-width:34px">J'+(j+1)+'</span><span class="big" id="kdv'+j+'" style="font-size:16px;min-width:64px;color:var(--ink)">0.00</span>'
+   +'<input type="range" id="kdj'+j+'" min="0" max="'+KDMAX[j]+'" step="'+(KDMAX[j]/40)+'" value="0">'; kdrows.appendChild(row);
+  const el=row.querySelector('input'); el.addEventListener('input',()=>{ document.getElementById('kdv'+j).textContent=Number(el.value).toFixed(2); kdHold=Date.now()+800;
+    clearTimeout(el._t); el._t=setTimeout(()=>fetch('/set?p=kd&i='+j+'&v='+el.value).catch(()=>{}),120); }); }
+function applyKd(s){ if(!s.kd || Date.now()<kdHold) return; for(let j=0;j<6;j++){ const el=document.getElementById('kdj'+j); el.value=s.kd[j]; document.getElementById('kdv'+j).textContent=s.kd[j].toFixed(2); } }
 // ---- damping + schedule controls
 const dampcard=document.getElementById('dampcard'), dampstatus=document.getElementById('dampstatus');
-const DCTL=[['damp_t','dtval',v=>Number(v).toFixed(1)],['damp_r','drval',v=>Number(v).toFixed(2)],['damp_vsat','vsval',v=>Number(v).toFixed(2)],
+const DCTL=[['kd_scale','kdval',v=>'×'+Number(v).toFixed(1)],['damp_t','dtval',v=>Number(v).toFixed(1)],['damp_r','drval',v=>Number(v).toFixed(2)],['damp_vsat','vsval',v=>Number(v).toFixed(2)],
             ['sigma_v','svval',v=>Number(v)>0?Number(v).toFixed(2):'off'],['kappa0','k0val',v=>Number(v)>0?String(Math.round(v)):'off']];
 let dampHold=0;
 for(const [id,lab,fm] of DCTL){ const el=document.getElementById(id), l=document.getElementById(lab);
   el.addEventListener('input',()=>{ l.textContent=fm(el.value); dampHold=Date.now()+800; clearTimeout(el._t); el._t=setTimeout(()=>fetch('/set?p='+id+'&v='+el.value).catch(()=>{}),120); }); }
 function applyDamp(s){
   const d=s.damping; const hasF=s.fric_sigma_v!=null;
-  if(!d && !hasF){ dampcard.hidden=true; return; } dampcard.hidden=false;
+  if(!d && !hasF && !s.kd){ dampcard.hidden=true; return; } dampcard.hidden=false;
   if(Date.now()<dampHold) return;
   const set=(id,lab,v,fm)=>{ const el=document.getElementById(id); el.disabled=(v==null); if(v!=null){ el.value=v; document.getElementById(lab).textContent=fm(v); } };
-  set('damp_t','dtval',d?d.d_t:null,DCTL[0][2]); set('damp_r','drval',d?d.d_r:null,DCTL[1][2]); set('damp_vsat','vsval',d?d.vsat:null,DCTL[2][2]);
-  set('sigma_v','svval',s.fric_sigma_v,DCTL[3][2]); set('kappa0','k0val',s.fric_kappa0,DCTL[4][2]);
+  set('kd_scale','kdval',s.kd_scale,DCTL[0][2]); set('damp_t','dtval',d?d.d_t:null,DCTL[1][2]); set('damp_r','drval',d?d.d_r:null,DCTL[2][2]); set('damp_vsat','vsval',d?d.vsat:null,DCTL[3][2]);
+  set('sigma_v','svval',s.fric_sigma_v,DCTL[4][2]); set('kappa0','k0val',s.fric_kappa0,DCTL[5][2]);
+  applyKd(s);
   let txt='cond(J) <b>'+(s.cond||0).toFixed(0)+'</b>';
   if(s.fric_alpha) txt+=' · friction comp ratio per joint <b>'+s.fric_alpha.map(x=>x.toFixed(2)).join(' ')+'</b>';
   if(d&&d.d_eff){ txt+='<br>joint damping applied <b>'+d.d_eff.map(x=>x.toFixed(2)).join(' ')+'</b>'; if(d.required){ const short=d.d_eff.map((x,i)=>x<d.required[i]?'J'+(i+1):null).filter(Boolean);
     txt+=' · eq 35 needs ≥ <b>'+d.required.map(x=>x.toFixed(2)).join(' ')+'</b>'+(short.length?' <span class="off">short on '+short.join(',')+'</span>':' · <b>OK</b>'); } }
   dampstatus.innerHTML=txt;
 }
+document.querySelectorAll('.seg').forEach(x=>x.addEventListener('click',()=>{ balHold=Date.now()+800; fetch('/set?p=coupling&v='+x.dataset.c).catch(()=>{}); }));
+document.getElementById('reliefbtn').addEventListener('click',function(){ const on=!this.classList.contains('on'); balHold=Date.now()+800; fetch('/set?p=relief&v='+(on?1:0)).catch(()=>{}); });
 // ---- balance controls
 const kappa=document.getElementById('kappa'), kval=document.getElementById('kval'), md=document.getElementById('md'), mval=document.getElementById('mval'),
       irot=document.getElementById('irot'), ival=document.getElementById('ival'), balcard=document.getElementById('balcard'), balstatus=document.getElementById('balstatus');
@@ -170,6 +194,8 @@ poll=async function(){ await pollBase();
     applyDamp(s);
     if(!b){ balcard.hidden=true; return; } balcard.hidden=false;
     if(Date.now()>balHold){ kappa.value=b.kappa; kval.textContent=b.kappa.toFixed(1); md.value=b.m_d; mval.textContent=b.m_d.toFixed(2)+' kg'; irot.value=b.i_rot; ival.textContent=b.i_rot.toFixed(3); }
+    document.querySelectorAll('.seg').forEach(x=>x.classList.toggle('on',x.dataset.c===b.coupling));
+    const rb=document.getElementById('reliefbtn'); rb.textContent=b.relief?'on':'off'; rb.classList.toggle('on',!!b.relief);
     balstatus.innerHTML='alpha (ramp·singularity·trips) <b>'+b.alpha.toFixed(2)+'</b> · cond(J) <b>'+b.cond.toFixed(0)+'</b> · runaway trips <b>'+b.trips+'</b>'+(b.trips?' <span class="off">gain halved</span>':'');
   }catch(e){} };
 setInterval(poll,100); poll();
