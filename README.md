@@ -100,6 +100,22 @@ python examples/drag_mode.py --tool data/tool_body.npz --gravity data/gravity_ca
 Because the bias absorbs the asymmetry, friction_cal's static levels are symmetric. Re-run
 gravity_cal after any new friction_cal or tool_id data.
 
+## Passivity-aware damping and friction schedules (paper eq 35-37, as in b601)
+
+```bash
+python examples/drag_mode.py --tool data/tool_body.npz --gravity data/gravity_cal.npz \
+       --friction data/friction_model.npz --damp 5 0.05 --fric-sigma-v 0.05 --serve
+```
+
+`--damp T R` is a saturating, diagonal Cartesian damper at the tool (eq 35):
+`tau = -min(diag(J^T D_v J), 0.15 M_jj/dt) * vsat * tanh(qd/vsat)`, strictly dissipative,
+full slope at rest where over-relief can inject energy, felt drag capped at `d*vsat`. It
+runs with or without `--balance`. At start the script prints the eq-35 check: applied joint
+damping vs `delta_f / v0`, where `delta_f` is the friction-estimate uncertainty saved by
+`friction_cal.py fit`. `--fric-sigma-v` (eq 36) tapers the friction comp near zero velocity
+per joint, `--fric-kappa0` (eq 37) near singular poses. All live on the panel. Sustain and
+per-joint margins from older b601 versions are deliberately NOT ported.
+
 ## Balanced drag (inertia shaping, port of b601_teleop)
 
 ```bash

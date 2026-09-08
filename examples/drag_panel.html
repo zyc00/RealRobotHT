@@ -60,6 +60,26 @@
     <p class="note">Above the real friction a joint self-drives. The levels are conservative, but if a joint runs away, pull the slider down first and press the e-stop second.</p>
     <p class="status" id="status">connecting…</p>
   </div>
+  <div class="card" id="dampcard" hidden>
+    <h1 style="font-size:16px">Passivity-aware damping and friction schedules</h1>
+    <p class="sub">Eq 35: a saturating Cartesian damper at the tool that must dominate the friction-estimate error. Eq 36/37: taper the friction compensation near zero velocity and near singular poses.</p>
+    <div class="row" style="margin-top:12px"><div class="big" id="dtval" style="font-size:24px;color:var(--ink)">0.0</div>
+      <input type="range" id="damp_t" min="0" max="20" step="0.5" value="0"></div>
+    <div class="ticks"><span>0</span><span>translational damping D_v, N·s/m</span><span>20</span></div>
+    <div class="row" style="margin-top:10px"><div class="big" id="drval" style="font-size:24px;color:var(--ink)">0.00</div>
+      <input type="range" id="damp_r" min="0" max="0.3" step="0.01" value="0"></div>
+    <div class="ticks"><span>0</span><span>rotational damping, N·m·s/rad</span><span>0.3</span></div>
+    <div class="row" style="margin-top:10px"><div class="big" id="vsval" style="font-size:24px;color:var(--ink)">0.15</div>
+      <input type="range" id="damp_vsat" min="0.08" max="0.3" step="0.01" value="0.15"></div>
+    <div class="ticks"><span>0.08 = v0</span><span>saturation knee vsat, rad/s (felt drag caps at d·vsat)</span><span>0.3</span></div>
+    <div class="row" style="margin-top:14px"><div class="big" id="svval" style="font-size:24px;color:var(--ink)">off</div>
+      <input type="range" id="sigma_v" min="0" max="0.3" step="0.01" value="0"></div>
+    <div class="ticks"><span>off</span><span>eq 36 velocity knee sigma_v, rad/s</span><span>0.3</span></div>
+    <div class="row" style="margin-top:10px"><div class="big" id="k0val" style="font-size:24px;color:var(--ink)">off</div>
+      <input type="range" id="kappa0" min="0" max="150" step="5" value="0"></div>
+    <div class="ticks"><span>off</span><span>eq 37 singularity reference kappa0 (full comp while cond(J) &lt; kappa0)</span><span>150</span></div>
+    <p class="status" id="dampstatus">–</p>
+  </div>
   <div class="card" id="balcard" hidden>
     <h1 style="font-size:16px">Inertia shaping (balanced drag)</h1>
     <p class="sub">The arm is made to feel like one isotropic virtual mass at the tool. kappa = max lightening ratio minus one; 0 = observe only.</p>
@@ -117,6 +137,26 @@ async function poll(){
     }
   }catch(e){ status.textContent='session offline'; }
 }
+// ---- damping + schedule controls
+const dampcard=document.getElementById('dampcard'), dampstatus=document.getElementById('dampstatus');
+const DCTL=[['damp_t','dtval',v=>Number(v).toFixed(1)],['damp_r','drval',v=>Number(v).toFixed(2)],['damp_vsat','vsval',v=>Number(v).toFixed(2)],
+            ['sigma_v','svval',v=>Number(v)>0?Number(v).toFixed(2):'off'],['kappa0','k0val',v=>Number(v)>0?String(Math.round(v)):'off']];
+let dampHold=0;
+for(const [id,lab,fm] of DCTL){ const el=document.getElementById(id), l=document.getElementById(lab);
+  el.addEventListener('input',()=>{ l.textContent=fm(el.value); dampHold=Date.now()+800; clearTimeout(el._t); el._t=setTimeout(()=>fetch('/set?p='+id+'&v='+el.value).catch(()=>{}),120); }); }
+function applyDamp(s){
+  const d=s.damping; const hasF=s.fric_sigma_v!=null;
+  if(!d && !hasF){ dampcard.hidden=true; return; } dampcard.hidden=false;
+  if(Date.now()<dampHold) return;
+  const set=(id,lab,v,fm)=>{ const el=document.getElementById(id); el.disabled=(v==null); if(v!=null){ el.value=v; document.getElementById(lab).textContent=fm(v); } };
+  set('damp_t','dtval',d?d.d_t:null,DCTL[0][2]); set('damp_r','drval',d?d.d_r:null,DCTL[1][2]); set('damp_vsat','vsval',d?d.vsat:null,DCTL[2][2]);
+  set('sigma_v','svval',s.fric_sigma_v,DCTL[3][2]); set('kappa0','k0val',s.fric_kappa0,DCTL[4][2]);
+  let txt='cond(J) <b>'+(s.cond||0).toFixed(0)+'</b>';
+  if(s.fric_alpha) txt+=' · friction comp ratio per joint <b>'+s.fric_alpha.map(x=>x.toFixed(2)).join(' ')+'</b>';
+  if(d&&d.d_eff){ txt+='<br>joint damping applied <b>'+d.d_eff.map(x=>x.toFixed(2)).join(' ')+'</b>'; if(d.required){ const short=d.d_eff.map((x,i)=>x<d.required[i]?'J'+(i+1):null).filter(Boolean);
+    txt+=' · eq 35 needs ≥ <b>'+d.required.map(x=>x.toFixed(2)).join(' ')+'</b>'+(short.length?' <span class="off">short on '+short.join(',')+'</span>':' · <b>OK</b>'); } }
+  dampstatus.innerHTML=txt;
+}
 // ---- balance controls
 const kappa=document.getElementById('kappa'), kval=document.getElementById('kval'), md=document.getElementById('md'), mval=document.getElementById('mval'),
       irot=document.getElementById('irot'), ival=document.getElementById('ival'), balcard=document.getElementById('balcard'), balstatus=document.getElementById('balstatus');
@@ -127,6 +167,7 @@ wire(kappa,kval,v=>Number(v).toFixed(1),'kappa'); wire(md,mval,v=>Number(v).toFi
 const pollBase=poll;
 poll=async function(){ await pollBase();
   try{ const s=await (await fetch('/state')).json(); const b=s.balance;
+    applyDamp(s);
     if(!b){ balcard.hidden=true; return; } balcard.hidden=false;
     if(Date.now()>balHold){ kappa.value=b.kappa; kval.textContent=b.kappa.toFixed(1); md.value=b.m_d; mval.textContent=b.m_d.toFixed(2)+' kg'; irot.value=b.i_rot; ival.textContent=b.i_rot.toFixed(3); }
     balstatus.innerHTML='alpha (ramp·singularity·trips) <b>'+b.alpha.toFixed(2)+'</b> · cond(J) <b>'+b.cond.toFixed(0)+'</b> · runaway trips <b>'+b.trips+'</b>'+(b.trips?' <span class="off">gain halved</span>':'');

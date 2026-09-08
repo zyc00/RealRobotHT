@@ -412,7 +412,8 @@ def cmd_fit(a):
     gabs = lambda q: np.abs(mdl.gravity_torque(q))
     out = dict(kin_f0=np.full(6, np.nan), kin_mu=np.zeros(6), kin_B=np.zeros(6),
                static_f0=np.full(6, np.nan), static_mu=np.zeros(6),
-               static_pos=np.full(6, np.nan), static_neg=np.full(6, np.nan))
+               static_pos=np.full(6, np.nan), static_neg=np.full(6, np.nan),
+               kin_rms=np.zeros(6), static_spread=np.zeros(6))    # uncertainty -> passivity bound (eq 35)
 
     # ---- kinetic: pair +/-v per pose, odd part vs measured speed --------------
     kin = [r for r in rows if r["kind"] == "kin"]
@@ -442,6 +443,7 @@ def cmd_fit(a):
         B = max(B, 0.0)
         f0 = f0 - rms                                    # conservative: below the real level at every pose
         out["kin_f0"][j], out["kin_B"][j], out["kin_mu"][j] = f0, B, mu
+        out["kin_rms"][j] = rms
         print("  J%d   %6.3f   %7.4f    %6.3f     %.3f -> %.3f    %.2f" % (j + 1, f0, B, mu, rms_flat, rms, gspan))
 
     # ---- static: level (+ load), per-direction medians -----------------------
@@ -473,6 +475,7 @@ def cmd_fit(a):
     st_rows = [r for r in rows if r["kind"] == "static"]
     if st_rows:
         Fm = np.array([F(r, "f%d") for r in st_rows]); Rm = np.array([F(r, "resid%d") for r in st_rows])
+        out["static_spread"] = np.nanmax(Fm, 0) - np.nanmin(Fm, 0)
         print("\nstatic breakaway: %d poses" % n_st)
         print("  joint   F_s med   min    max    mu(load)   +dir    -dir   |g-resid| mean   (levels saved = conservative)")
         for j in range(6):
