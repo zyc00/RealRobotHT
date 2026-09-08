@@ -61,6 +61,29 @@ qawake  # keep the headset awake off-head
 qguard  # pause the headset boundary system
 ```
 
+## Drag mode with the F/T tool (torque mode, gravity + friction)
+
+Since 2026-09-08 an ATI Nano25 F/T sensor and two adaptors sit past the joint-6
+flange. Gravity comp models everything past joint 6 as ONE rigid body and reads it
+from a tool file; friction comp reads a calibrated Stribeck model. Both `piperctl`:
+
+```bash
+python examples/tool_id.py prior                    # CAD + datasheet -> data/tool_prior.npz (holds)
+python examples/tool_id.py torque && python examples/tool_id.py fit   # refine mass in t_ff units
+python examples/friction_cal.py run                 # 6 poses, static + multi-speed kinetic sweeps
+python examples/friction_cal.py fit                 # -> data/friction_model.npz
+python examples/drag_mode.py --tool data/tool_prior.npz --friction data/friction_model.npz
+```
+
+Two facts that cost a day: the **reported joint effort cannot weigh the tool**
+(each joint's current coefficient is unknown - slopes 0.28/0.29/0.82/1.16 on
+J2-J5 against the model - so mass and coefficient trade off; `tool_id.py check`
+only confirms the model's shape), and the **firmware MIT kp/kd are not in
+N.m/rad**, so the kinetic friction sweep runs a host-side PD in `t_ff`. The
+static sweep brackets breakaway in both directions: friction is the
+half-difference, the gravity residual is the half-sum (free model check).
+`--fric-scale` (default 0.8) must stay below 1 or joints creep.
+
 ## Admittance demo (not a working teleop mode)
 
 ```bash

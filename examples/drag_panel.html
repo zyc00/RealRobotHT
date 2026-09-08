@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Piper Drag Console</title>
+<style>
+  :root{
+    --ground:#F6F7F4; --surface:#FFFFFF; --ink:#171B17; --muted:#5C645C; --border:#DEE3DC;
+    --track:#E5E9E3; --accent:#1F6FB2; --accent-soft:#E3EEF8; --warm:#D9761A; --warm-soft:#FBEBDD;
+    --bad:#171B17;
+  }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+    --ground:#121412; --surface:#1B1F1B; --ink:#E7ECE5; --muted:#96A096; --border:#2E342D;
+    --track:#2A2F2A; --accent:#6FB1EA; --accent-soft:#1C2A38; --warm:#F0954A; --warm-soft:#3A2A1C; --bad:#E7ECE5; }}
+  :root[data-theme="dark"]{
+    --ground:#121412; --surface:#1B1F1B; --ink:#E7ECE5; --muted:#96A096; --border:#2E342D;
+    --track:#2A2F2A; --accent:#6FB1EA; --accent-soft:#1C2A38; --warm:#F0954A; --warm-soft:#3A2A1C; --bad:#E7ECE5; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font:14px/1.5 system-ui,sans-serif;padding:24px}
+  .wrap{max-width:760px;margin:0 auto;display:grid;gap:16px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+  h1{font-size:18px;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin:0}
+  .row{display:flex;align-items:center;gap:14px}
+  .big{font-size:40px;font-weight:600;font-variant-numeric:tabular-nums;min-width:120px;color:var(--accent)}
+  input[type=range]{flex:1;accent-color:var(--accent);height:32px}
+  .ticks{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;padding:0 2px}
+  .status{font-size:13px;color:var(--muted)}
+  .status b{color:var(--ink)}
+  .off{color:var(--warm);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);font-size:13px}
+  th{color:var(--muted);font-weight:500}
+  td:first-child,th:first-child{text-align:left}
+  .bar{position:relative;height:10px;background:var(--track);border-radius:5px;overflow:hidden}
+  .bar i{position:absolute;top:0;bottom:0;left:50%;background:var(--accent)}
+  .bar i.warm{background:var(--warm)}
+  .bar b{position:absolute;top:-2px;bottom:-2px;left:50%;width:1px;background:var(--muted)}
+  .presets{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  button{background:var(--accent-soft);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;font:inherit}
+  button:hover{border-color:var(--accent)}
+  .note{font-size:12px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Piper drag console</h1>
+    <p class="sub">Friction compensation fraction, applied live to the torque-mode drag law.</p>
+    <div class="row" style="margin-top:14px">
+      <div class="big" id="val">0.80</div>
+      <input type="range" id="fric" min="0" max="0.9" step="0.05" value="0.8">
+    </div>
+    <div class="ticks"><span>0 = gravity only</span><span>0.45</span><span>0.9 = max</span></div>
+    <div class="presets">
+      <button data-v="0">0</button><button data-v="0.3">0.3</button><button data-v="0.5">0.5</button>
+      <button data-v="0.7">0.7</button><button data-v="0.8">0.8</button><button data-v="0.9">0.9</button>
+    </div>
+    <p class="note">Above the real friction a joint self-drives. The levels are conservative, but if a joint runs away, pull the slider down first and press the e-stop second.</p>
+    <p class="status" id="status">connecting…</p>
+  </div>
+  <div class="card">
+    <table>
+      <thead><tr><th>joint</th><th>q (deg)</th><th>qdot (rad/s)</th><th>gravity (N·m)</th><th>friction ff (N·m)</th><th style="text-align:left;width:34%">friction ff, ±0.6</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p class="note">Blue bar: friction feed-forward in the direction of motion. Orange: the value exceeds 0.6 N·m, off scale.</p>
+  </div>
+</div>
+<script>
+const slider=document.getElementById('fric'), val=document.getElementById('val'), status=document.getElementById('status'), rows=document.getElementById('rows');
+let holdUntil=0, lastSent=null;
+function show(v){ val.textContent=Number(v).toFixed(2); }
+async function send(v){
+  v=Math.max(0,Math.min(0.9,Number(v))); slider.value=v; show(v); holdUntil=Date.now()+800;
+  if(lastSent===v) return; lastSent=v;
+  try{ const r=await (await fetch('/set?p=fric&v='+v)).json(); if(!r.ok) status.textContent='rejected'; }
+  catch(e){ status.textContent='session offline'; }
+}
+slider.addEventListener('input',()=>{ show(slider.value); });
+slider.addEventListener('change',()=>send(slider.value));
+slider.addEventListener('input',()=>{ clearTimeout(slider._t); slider._t=setTimeout(()=>send(slider.value),120); });
+document.querySelectorAll('.presets button').forEach(b=>b.addEventListener('click',()=>send(b.dataset.v)));
+for(let j=0;j<6;j++){ const tr=document.createElement('tr'); tr.innerHTML='<td>J'+(j+1)+'</td><td></td><td></td><td></td><td></td><td><div class="bar"><b></b><i></i></div></td>'; rows.appendChild(tr); }
+function fmt(x,d){ return x==null?'–':Number(x).toFixed(d); }
+async function poll(){
+  try{
+    const s=await (await fetch('/state')).json();
+    if(s.fric_scale!=null && Date.now()>holdUntil){ slider.value=s.fric_scale; show(s.fric_scale); lastSent=s.fric_scale; }
+    status.innerHTML = (s.running?'<b>drag live</b>':'<span class="off">not in torque mode</span>') + (s.trip?' · trip: <b>'+s.trip+'</b>':'') + ' · scale <b>'+fmt(s.fric_scale,2)+'</b>';
+    const trs=rows.children;
+    for(let j=0;j<6;j++){
+      const td=trs[j].children;
+      td[1].textContent = s.q? (s.q[j]*180/Math.PI).toFixed(1):'–';
+      td[2].textContent = s.qdot? fmt(s.qdot[j],3):'–';
+      td[3].textContent = s.gravity? fmt(s.gravity[j],2):'–';
+      td[4].textContent = s.fric_ff? fmt(s.fric_ff[j],3):'–';
+      const f = s.fric_ff? s.fric_ff[j]:0, i=td[5].querySelector('i'), w=Math.min(Math.abs(f)/0.6,1)*50;
+      i.style.width=w+'%'; i.style.left=(f>=0?50:50-w)+'%'; i.className=Math.abs(f)>0.6?'warm':'';
+    }
+  }catch(e){ status.textContent='session offline'; }
+}
+setInterval(poll,100); poll();
+</script>
+</body>
+</html>

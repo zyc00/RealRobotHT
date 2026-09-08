@@ -45,9 +45,22 @@ ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt
 ap.add_argument("--can", default="can0")
 ap.add_argument("--payload-mass", type=float, default=0.0, help="kg on the gripper")
 ap.add_argument("--tool", default=None, help="tool file from examples/tool_id.py (mass+COM past joint 6)")
+ap.add_argument("--friction", default=None, help="friction model from examples/friction_cal.py")
+ap.add_argument("--fric-scale", type=float, default=0.8, help="fraction of calibrated friction to compensate")
+ap.add_argument("--serve", nargs="?", const=8731, type=int, default=None, metavar="PORT",
+                help="web panel on localhost (default port 8731): live friction-compensation slider")
 a = ap.parse_args()
 
-gc = GravityCompensator(can=a.can, payload_mass=a.payload_mass, tool=a.tool)
+gc = GravityCompensator(can=a.can, payload_mass=a.payload_mass, tool=a.tool,
+                        friction=a.friction, fric_scale=a.fric_scale)
+if gc.fric is not None:
+    print(gc.fric.summary())
+if a.serve is not None:
+    if gc.fric is None:
+        ap.error("--serve needs --friction (the slider controls the friction compensation)")
+    from piperx_teleop import webserve
+    webserve.start(gc, os.path.join(os.path.dirname(os.path.abspath(__file__)), "drag_panel.html"), port=a.serve)
+    print("panel: http://127.0.0.1:%d   (slider = friction compensation 0..0.9, live)" % a.serve)
 print("pose (deg)   :", np.degrees(gc.q()).round(1))
 print("gravity (N.m):", gc.gravity().round(2))
 if not a.yes:
