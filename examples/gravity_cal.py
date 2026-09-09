@@ -36,7 +36,14 @@ ap.add_argument("--measured-with", default="data/tool_prior.npz", help="tool fil
 ap.add_argument("--csv", default="data/friction_cal.csv")
 ap.add_argument("--torque", default="data/tool_torque.npz")
 ap.add_argument("--out", default="data/gravity_cal.npz")
+ap.add_argument("--force", action="store_true", help="overwrite a file that carries a static/motion schedule")
 a = ap.parse_args()
+if os.path.exists(a.out) and not a.force:
+    with np.load(a.out, allow_pickle=False) as _d:
+        if "schedule_version" in _d:
+            raise SystemExit("%s carries historical static/motion schedule metadata; rewriting it "
+                             "would drop that. Choose a new --out file, or use --force to replace it "
+                             "with a constant calibration for B601-aligned drag." % a.out)
 
 mdl = model_with_tool(a.tool if os.path.exists(a.tool) else None)
 old = model_with_tool(a.measured_with if os.path.exists(a.measured_with) else None)

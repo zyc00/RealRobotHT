@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Piper · B601 reference</title>
+<style>body{font:16px system-ui;max-width:760px;margin:30px auto;padding:16px;background:#f6f7f4;color:#171b17}section{padding:20px;background:white;border:1px solid #ddd;border-radius:12px;margin:16px 0}label{display:block;margin-top:16px}input{width:100%}output{float:right}pre{white-space:pre-wrap;font-size:13px}</style>
+<h1>B601 reference on Piper</h1>
+<p>Constant gravity correction. B601 observer, full shaping matrix and 30 ms velocity filter.</p>
+<section id="controls"></section>
+<p>Breakaway is a single fraction, directed by the observer on all joints.</p>
+<p>Firmware kd is set at launch; its physical units on Piper have not been calibrated.</p>
+<p id="status" role="status">Connecting…</p><section><pre id="telemetry"></pre></section>
+<script>
+const definitions=[['kappa','Inertia shaping κ',0,2,.1],['fric_scale','Friction compensation',0,.9,.05],
+ ['damp_t','Translational damping (N·s/m)',0,20,.5],['damp_r','Rotational damping (N·m·s/rad)',0,.3,.01],
+ ['break_beta','Breakaway fraction',0,1,.01],['break_vs','Breakaway decay speed (rad/s)',.005,.3,.005]];
+const controls=document.getElementById('controls'),status=document.getElementById('status');
+const fields=[];let failure='';
+for(const [key,label,min,max,step] of definitions){
+ const row=document.createElement('div');row.innerHTML='<label for="'+key+'">'+label+'<output></output></label><input disabled type="range" id="'+key+'" min="'+min+'" max="'+max+'" step="'+step+'">';controls.appendChild(row);
+ const el=row.querySelector('input'),out=row.querySelector('output'),f={key,el,out,busy:false};fields.push(f);
+ el.oninput=()=>{f.busy=true;out.textContent=Number(el.value).toFixed(3);};
+ el.onchange=async()=>{el.disabled=true;try{const r=await fetch('/set?p='+key+'&v='+encodeURIComponent(el.value));const d=await r.json();if(!r.ok)throw Error(d.error);failure='';}catch(e){failure=e.message;}finally{f.busy=false;}};
+}
+let polling=false;
+async function poll(){if(polling)return;polling=true;try{const response=await fetch('/state');if(!response.ok)throw Error('State unavailable');const s=await response.json();
+ for(const f of fields){if(f.busy)continue;f.el.disabled=false;f.el.value=s[f.key];f.out.textContent=Number(s[f.key]).toFixed(3);}
+ status.textContent=failure || 'Connected · alpha '+Number(s.alpha||0).toFixed(2)+' · trips '+(s.trips||0);
+ document.getElementById('telemetry').textContent=JSON.stringify({velocity:s.velocity,residual:s.residual,balance_total:s.balance_total,torque_ff:s.torque_ff,firmware_kd:s.kd},null,2);
+ }catch(e){status.textContent='Offline: '+e.message;for(const f of fields)f.el.disabled=true;}finally{polling=false;}}
+setInterval(poll,200);poll();
+</script></html>

@@ -72,7 +72,7 @@ python examples/tool_id.py prior                    # CAD + datasheet -> data/to
 python examples/tool_id.py torque && python examples/tool_id.py fit   # refine mass in t_ff units
 python examples/friction_cal.py run                 # 6 poses, static + multi-speed kinetic sweeps
 python examples/friction_cal.py fit                 # -> data/friction_model.npz
-python examples/drag_mode.py --tool data/tool_prior.npz --friction data/friction_model.npz
+python examples/drag_mode.py --tool data/tool_body.npz --gravity data/gravity_cal.npz --friction data/friction_model.npz
 ```
 
 Two facts that cost a day: the **reported joint effort cannot weigh the tool**
@@ -100,59 +100,90 @@ python examples/drag_mode.py --tool data/tool_body.npz --gravity data/gravity_ca
 Because the bias absorbs the asymmetry, friction_cal's static levels are symmetric. Re-run
 gravity_cal after any new friction_cal or tool_id data.
 
-## Passivity-aware damping and friction schedules (paper eq 35-37, as in b601)
+### Separate static and moving residuals
+
+The legacy gravity calibration above fits breakaway midpoints, which mix gravity
+error with directional static friction. That midpoint need not remain valid in
+motion. Compare the two regimes for all six joints without overwriting calibration:
 
 ```bash
-python examples/drag_mode.py --tool data/tool_body.npz --gravity data/gravity_cal.npz \
-       --friction data/friction_model.npz --damp 5 0.05 --fric-sigma-v 0.05 --serve
+python examples/separate_bias.py --measured-with data/tool_prior.npz --out data/bias_separation_new.npz
 ```
 
-`--damp T R` is a saturating, diagonal Cartesian damper at the tool (eq 35):
-`tau = -min(diag(J^T D_v J), 0.15 M_jj/dt) * vsat * tanh(qd/vsat)`, strictly dissipative,
-full slope at rest where over-relief can inject energy, felt drag capped at `d*vsat`. It
-runs with or without `--balance`. At start the script prints the eq-35 check: applied joint
-damping vs `delta_f / v0`, where `delta_f` is the friction-estimate uncertainty saved by
-`friction_cal.py fit`. `--fric-sigma-v` (eq 36) tapers the friction comp near zero velocity
-per joint, `--fric-kappa0` (eq 37) near singular poses. All live on the panel. Sustain and
-per-joint margins from older b601 versions are deliberately NOT ported.
+Specify the tool model actually used during acquisition; old CSVs do not record it.
+The script pairs opposite kinetic sweeps, rejects missing or mismatched motion,
+fits static and moving scale/bias independently with equal weight per pose, and
+reports their difference at matching poses. It saves diagnostic arrays and a
+Markdown report, including sample counts and scatter. Existing outputs are not
+overwritten. These files are not `--gravity` inputs: moving residuals still mix
+gravity, friction asymmetry and dynamic errors. Legacy sweep-centre positions
+make tool-model conversion approximate. Current results are in
+`data/bias_separation.md`; static and moving biases differ notably on J1–J3.
 
-## Balanced drag (inertia shaping, port of b601_teleop)
+## B601-aligned drag on Piper
+
+`examples/drag_mode.py` now runs only the B601-aligned implementation, using an
+unchanged snapshot of `b601_teleop/b601/balance.py`. Start with assistance off
+and adjust inertia shaping and friction compensation from the panel:
 
 ```bash
-python examples/drag_mode.py --tool data/tool_body.npz --gravity data/gravity_cal.npz \
-       --friction data/friction_model.npz --balance 0 --serve   # observe only: watch r, no output
-python examples/drag_mode.py ... --balance 1 --serve      # arm up to 2x lighter, live sliders
+/home/yuchen/miniforge3/envs/piperctl/bin/python examples/drag_mode.py \
+  --tool data/tool_body.npz --gravity data/gravity_cal.npz \
+  --friction data/friction_model.npz --balance 0 --fric-scale 0 \
+  --serve --log data/b601_reference_01.npz
 ```
 
-`piperx_teleop.dynamics.ArmDynamics` (Pinocchio, `pip install pin` in piperctl) gives
-M(q), C(q, qd) and the tool Jacobian with the same gravity as PiperModel; the tool file
-becomes one rigid body on link6, tcp = flange + `--tcp` (0.19 m, fingertips).
-`piperx_teleop.balance.BalancedDrag` is b601's law: momentum observer for the hand torque
-(no torque sensor - positions and the commanded t_ff only), then `tau += K r_net` with
-`K = M Md^-1 - I`, `Md = J^T Lam_d J`, eigenvalues clipped to `[-kappa/(1+kappa), kappa]`,
-so heavy directions are assisted and the folding wrist is resisted. Ramp 2 s, singularity
-fade cond(J) 60-120, per-joint caps, runaway detector (KE rising with no hand power halves
-the gain). kappa <= 2 is the stability ceiling. Friction stays in FrictionComp; its
-feed-forward enters r_net exactly as in b601.
+Add `--dry-run` to validate the models without connecting to CAN. The reference
+panel at http://127.0.0.1:8731 controls shaping, friction, Cartesian damping and
+B601 breakaway. `--help` lists this mode's options. It rejects
+Piper-only options such as `--balance-fr`, `--balance-coupling`, `--breakaway`
+and `--balance-relief`, rather than silently changing reference behavior.
 
-Two Piper deviations from b601, both from the J1-runaway on 2026-09-08: the friction relief
-is NOT fed into the shaping input (b601's `r_net = r_db + f_ff` multiplied the relief by
-1+kappa on assisted joints; `--balance-relief` restores it) and the shaping matrix rows are
-bounded to sum <= kappa (`--balance-coupling bounded`, default; K is not symmetric and J1's
-row carried 3.7x of J5's estimate, so wrist motion alone drove J1; `full` = b601, `diag` =
-no redistribution at all). The runaway detector judges hand power from the hand estimate.
+Preserved from B601: momentum observer excluding friction from beta, friction
+relief added to r_net, full eigen-clipped K (no row normalization), rest-bias
+learning, 25–40 condition-number fade, torque clipping, runaway detector,
+30 ms position-difference velocity filter, and previous-command PD reconstruction
+using midpoint velocity. Default reference CLI policies are mass 1.8 kg,
+pitch/yaw inertia 0.06, roll inertia 0.0005, observer 3 Hz, Cartesian damping
+2 / 0.3 with knee 0.08, velocity taper 0.03, soft intent floor 0.5, detent and
+breakaway off. The loop target is 100 Hz, like the B601 config. Actual timing
+still depends on Piper's runtime and feedback transport.
 
-The observer is FRICTION-AWARE (2026-09-09): beta = g - C^T qd + F_model(qd), so r estimates
-the hand alone. Without it r = hand - friction, and on a coasting joint the shaping braked
-with kappa x friction - a relay against a compliant hand (J2 hunted at 1-1.5 Hz in the logs).
-`--kd` adds linear joint damping (paper D_min, b601 kd_drag; live multiplier on the panel):
-the saturating Cartesian damper is a passivity guard, flat above vsat, and does not damp the
-hand-arm resonance of a lightened heavy joint. Log with `--log` and read it with
-`examples/log_analyze.py` before tuning further.
+Hardware adaptations are explicit: Piper URDF/tool/calibrated friction, a proper
+rotation of tool-frame Jacobian rows (Piper roll-z to B601 roll-x), Piper's CAN
+runtime/watchdog/position-hold exit, and Piper-specific torque limits. The dynamics
+use URDF-only inertia (`rotor=0`) as B601 does. Combined assistance caps are
+[0.6, 1.5, 1.0, 0.4, 0.3, 0.2] N·m; total feed-forward caps are
+[8, 10, 8, 3, 3, 3] N·m. Limits are recorded before observer command accounting.
+They can restrict the reference output differently from B601's actuator limits.
 
-First run: `--balance 0` and check that r is ~0 at rest and follows your hand; then 0.5,
-then 1. Watch `alpha` (ramp x singularity x trips) and `cond(J)` on the panel. The
-TorqueSession velocity watchdog (3 rad/s) still ends the session if the arm gets away.
+**`--kd` means raw firmware MIT damping gains**, not host-side N·m·s/rad. Defaults are all zero, with this port limiting inputs to
+0..0.5. B601's firmware command policy is preserved, but Piper gain units have
+not been calibrated; nonzero kd therefore makes physical damping and its observer
+reconstruction uncertain. Do not copy Piper mode's `--kd ... 4 ...` command here.
+The Cartesian damper remains active with zero firmware kd.
+
+Gravity always uses the file's constant legacy `scale`/`bias` keys; scheduled
+static/moving corrections and encoder-directed breakaway are bypassed. Optional
+`--balance-breakaway` is B601's single scalar observer-directed term on all joints,
+rather than the removed encoder-directed proximal-only vector. No additional Piper friction feed-forward
+or host damping is added. Launch defaults for kappa/friction are zero for initial
+validation, rather than B601 CLI's assisted defaults.
+
+The superseded controller, scheduled-bias adapter, encoder-directed breakaway,
+and old panel were removed from the active source tree. Their exact source backup
+is `data/legacy_drag_sources_before_b601.tar.gz`. Calibration files, historical
+logs and unrelated examples remain intact. `--controller b601` is accepted for
+old launch commands; there is no alternate controller. Shared `piperx_teleop`
+package code remains available to other projects; this script uses only its
+hardware runtime and model support.
+
+Logs have an explicit `controller=b601-reference` schema, per-tick live settings,
+residual, combined assistance and commanded firmware gains. `log_analyze.py`
+recognizes it. Snapshot SHA256:
+`888329aa0fee08c9b062dc5f895763397337e86d001f779065f6ef4dbbeac471`.
+Tests replay rest, movement, reversals, saturation and gain toggles against the
+original B601 class. Numerical parity does not establish hardware stability.
 
 ## Admittance demo (not a working teleop mode)
 

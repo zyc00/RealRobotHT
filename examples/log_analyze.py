@@ -35,14 +35,31 @@ def corr(a, b):
 for path in sys.argv[1:]:
     d = np.load(path)
     A = d["data"]
+    if 'controller' in d and str(d['controller']) == 'b601-reference':
+        if len(A) < 3:
+            print(path, ': insufficient reference samples'); continue
+        dt = float(np.median(np.diff(A[:, 0])))
+        print(path, ': B601 reference; %.1f s, median tick %.2f ms, alpha %.2f..%.2f' %
+              (A[-1, 0]-A[0, 0], dt*1000, A[:, 43].min(), A[:, 43].max()))
+        print(' joint | velocity std | peak Hz | residual std | combined assist std')
+        for j in range(6):
+            fq, _ = peak(A[:, 7+j], dt)
+            print(' J%d | %.3f | %.2f | %.3f | %.3f' %
+                  (j+1, A[:, 7+j].std(), fq, A[:, 25+j].std(), A[:, 31+j].std()))
+        print('Combined assist includes friction, shaping, Cartesian damping and optional B601 breakaway.')
+        continue
     t = A[:, 0]; q = A[:, 1:7]; qd_raw = A[:, 7:13]; qd = A[:, 13:19]; g = A[:, 19:25]
     f = A[:, 25:31]; tau = A[:, 31:37]; r = A[:, 37:43]; tb = A[:, 43:49]; alpha = A[:, 49]; cond = A[:, 50]
     dt = float(np.median(np.diff(t)))
-    damp = tau - g - f - tb                     # what is left is the damper (and nothing else)
+    assist = A[:, 51:57] if A.shape[1] >= 57 else np.zeros_like(f)
+    # tau_bal already includes Cartesian damping; this residual is linear kd.
+    damp = tau - g - f - tb - assist
     print("=" * 100)
     print("%s: %d ticks, %.1f s, tick %.2f ms (p99 %.2f ms), alpha %.2f..%.2f, cond %.0f..%.0f" % (
         path, len(A), t[-1] - t[0], dt * 1e3, np.percentile(np.diff(t), 99) * 1e3, alpha.min(), alpha.max(), cond.min(), cond.max()))
     still = np.all(np.abs(qd) < 0.02, axis=1)
+    if A.shape[1] >= 57:
+        print("breakaway peak |torque| (N.m):", np.max(np.abs(assist), axis=0))
     if still.sum() > 50:
         print("at rest (%d ticks): r mean %s  r std %s" % (still.sum(), r[still].mean(0), r[still].std(0)))
     print("raw-velocity ticks that read exactly 0 (stale frame): %s %%" % (100 * np.mean(qd_raw == 0, axis=0)).round(0))
@@ -61,7 +78,7 @@ for path in sys.argv[1:]:
         print("\nworst 2 s window for J2 at t=%.1f s: velocity %.2f Hz (%.0f%% power), |qd| mean %.3f, alpha %.2f" % (
             t[i0] - t[0], fq, 100 * pq, np.abs(qd[seg, j]).mean(), alpha[seg].mean()))
         x = qd[seg, j] - qd[seg, j].mean()
-        for name, y in (("f_ff", f[seg, j]), ("tau_bal", tb[seg, j]), ("damp", damp[seg, j]), ("r", r[seg, j])):
+        for name, y in (("f_ff", f[seg, j]), ("assist", assist[seg, j]), ("tau_bal", tb[seg, j]), ("damp", damp[seg, j]), ("r", r[seg, j])):
             y = y - y.mean()
             if y.std() < 1e-9:
                 print("   %-8s flat" % name); continue
