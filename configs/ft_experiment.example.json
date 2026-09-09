@@ -1,0 +1,16 @@
+{
+  "ip": "192.168.1.1",
+  "port": 49152,
+  "counts_per_N": null,
+  "counts_per_Nm": null,
+  "units_verified": false,
+  "T_tcp_sensor": null,
+  "wrench_sign": 1,
+  "geometry_verified": false,
+  "sensor_serial": "FILL_ME",
+  "sensor_filter_hz": null,
+  "sensor_rate_hz": null,
+  "sensor_delay_s": 0.0,
+  "delay_verified": false,
+  "notes": "T_tcp_sensor maps sensor coordinates/origin into Piper TCP coordinates. Confirm ATI active output units, counts/unit, wrench action/reaction sign, hardware tool transform and payload below the sensing plane. Do not assume the leader tool_body.npz is the distal sensor payload. No automatic hardware tare. Receive timestamps are not acquisition timestamps."
+}

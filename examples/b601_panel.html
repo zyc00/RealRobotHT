@@ -5,13 +5,19 @@
 <h1>B601 reference on Piper</h1>
 <p>Constant gravity correction. B601 observer, full shaping matrix and 30 ms velocity filter.</p>
 <section id="controls"></section>
-<p>Breakaway is a single fraction, directed by the observer on all joints.</p>
+<p>One breakaway fraction applies equally to leader J1–J6. A value of 1.0 means each joint's full fraction, still multiplied by friction scale and subject to torque caps. The observer selects direction.</p>
+<p>Leader friction scale multiplies kinetic, viscous and breakaway compensation. At zero, breakaway is also off. It does not set follower friction compensation.</p>
 <p>Firmware kd is set at launch; its physical units on Piper have not been calibrated.</p>
+<p>Follower speeds affect mirroring only, not startup positioning. Increase firmware speed gradually; a faster target ramp can increase tracking error.</p>
+<p>MIT follower only: Kp/Kd are raw firmware gains, shared across six joints. Gain changes ramp gradually. No follower gravity feed-forward; sag is possible. Firmware speed % does not apply to MIT.</p>
 <p id="status" role="status">Connecting…</p><section><pre id="telemetry"></pre></section>
 <script>
-const definitions=[['kappa','Inertia shaping κ',0,2,.1],['fric_scale','Friction compensation',0,.9,.05],
+const definitions=[['kappa','Inertia shaping κ',0,2,.1],['fric_scale','Leader friction scale (includes breakaway)',0,.9,.01],
  ['damp_t','Translational damping (N·s/m)',0,20,.5],['damp_r','Rotational damping (N·m·s/rad)',0,.3,.01],
- ['break_beta','Breakaway fraction',0,1,.01],['break_vs','Breakaway decay speed (rad/s)',.005,.3,.005]];
+ ['break_beta','Breakaway fraction (all leader joints)',0,1,.01],
+ ['break_vs','Breakaway decay speed (rad/s)',.005,.3,.005],
+ ['follower_speed','Follower target ramp (rad/s)',.01,2,.01],['follower_speed_pct','Follower firmware speed (%)',1,100,1],
+ ['follower_kp','Follower MIT Kp (all joints)',1,30,.5],['follower_kd','Follower MIT Kd (all joints)',.1,2,.05]];
 const controls=document.getElementById('controls'),status=document.getElementById('status');
 const fields=[];let failure='';
 for(const [key,label,min,max,step] of definitions){
@@ -22,9 +28,9 @@ for(const [key,label,min,max,step] of definitions){
 }
 let polling=false;
 async function poll(){if(polling)return;polling=true;try{const response=await fetch('/state');if(!response.ok)throw Error('State unavailable');const s=await response.json();
- for(const f of fields){if(f.busy)continue;f.el.disabled=false;f.el.value=s[f.key];f.out.textContent=Number(s[f.key]).toFixed(3);}
+ for(const f of fields){if(f.busy)continue;const available=s[f.key]!=null;f.el.disabled=!available;if(!available){f.out.textContent='Unavailable in this mode';continue;}f.el.value=s[f.key];f.out.textContent=Number(s[f.key]).toFixed(f.key==='follower_speed_pct'?0:3);}
  status.textContent=failure || 'Connected · alpha '+Number(s.alpha||0).toFixed(2)+' · trips '+(s.trips||0);
- document.getElementById('telemetry').textContent=JSON.stringify({velocity:s.velocity,residual:s.residual,balance_total:s.balance_total,torque_ff:s.torque_ff,firmware_kd:s.kd},null,2);
+ document.getElementById('telemetry').textContent=JSON.stringify({velocity:s.velocity,residual:s.residual,breakaway_torque:s.breakaway_torque,core_saturated:s.core_saturated,feedforward_saturated:s.feedforward_saturated,balance_total:s.balance_total,torque_ff:s.torque_ff,firmware_kd:s.kd,follower:s.follower},null,2);
  }catch(e){status.textContent='Offline: '+e.message;for(const f of fields)f.el.disabled=true;}finally{polling=false;}}
 setInterval(poll,200);poll();
 </script></html>

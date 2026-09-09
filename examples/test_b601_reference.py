@@ -85,6 +85,9 @@ class ReferenceTests(unittest.TestCase):
                 law.set(name, value)
         law.set('kappa', 0)
         self.assertFalse(law.core.shaping_on)
+        self.assertIsNone(law.state()['follower_speed'])
+        with self.assertRaisesRegex(ValueError, 'no follower'):
+            law.set('follower_speed', .3)
 
 
 if __name__ == '__main__':

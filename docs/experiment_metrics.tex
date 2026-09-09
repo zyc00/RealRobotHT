@@ -1,0 +1,69 @@
+% Suggested methods text, not experimental results. Adapt axis/frame labels to
+% the paper and report actual acquisition/filter settings after validation.
+\paragraph{Breakaway assistance evaluation.}
+We evaluate breakaway assistance using repeated, directed rest-to-motion
+trials with matched initial configuration, grip point, and distal payload.
+Let $u_i(t)$ denote the measured interaction force (translation) or moment
+(rotation) along the instructed axis, expressed at the common tool reference
+point. The signal is corrected for sensor bias and distal-body gravity;
+dynamic correction is applied only when the required payload parameters are
+available. With $t_p$ the detected effort onset and $t_m$ the first sustained
+directed motion, we report
+\begin{equation}
+ U_{\mathrm{break},i}=\max_{t\in[t_p,t_m]}|u_i(t)-\bar u_{i,\mathrm{rest}}|,
+ \qquad T_{\mathrm{onset},i}=t_m-t_p.
+\end{equation}
+Trials without a valid onset are reported as failures, not assigned zero effort.
+We also report effort RMS, unintended rotation during translation, and command
+saturation frequency. The shared friction scale multiplies the breakaway term;
+therefore its zero setting disables assistance irrespective of the nominal
+breakaway fraction. Decay-speed settings at zero fraction are physically
+equivalent and are not interpreted as separate treatment effects.
+
+\paragraph{Damping evaluation.}
+For a prescribed release time $t_r$, we evaluate post-release translational
+and angular path lengths,
+\begin{equation}
+ D_{\mathrm{release}}=\int_{t_r}^{T}\|v(t)\|\,dt,\qquad
+ A_{\mathrm{release}}=\int_{t_r}^{T}\|\omega(t)\|\,dt,
+\end{equation}
+and the time required to remain below predefined linear and angular speed
+thresholds for a sustained interval. Release validity is checked using measured
+interaction effort and trace inspection. Trials with continued hand contact
+are not used to estimate free-decay behavior. Interaction work is
+\begin{equation}
+ E_h=\int_0^T W_h(t)^T V(t)\,dt,
+\end{equation}
+with power-conjugate wrench and twist expressed in the same frame and at the
+same reference point. These are empirical damping and interaction-energy
+measurements, not a proof of passivity; negative port work may include return
+of stored energy. The damping sweep independently switches translational and
+rotational damping off/on in a $2\times2$ design. Conditions that cannot be
+completed safely are reported explicitly, not silently omitted from the comparison.
+
+\paragraph{Local apparent inertia.}
+Over short windows with approximately constant local dynamics and limited
+off-axis motion, we fit the integral model
+\begin{equation}
+ \int_{t_a}^{t_b}u_i(t)\,dt =
+ M_{\mathrm{app},i}\Delta v_i+B_i\Delta x_i+
+ C_i\int_{t_a}^{t_b}\tanh(v_i/v_0)\,dt+b_i(t_b-t_a).
+\end{equation}
+For rotational axes, the corresponding angular quantities are used and the
+inertial coefficient has units of $\mathrm{kg\,m^2}$. We report the fit quality,
+excitation/conditioning checks, timing assumptions, and saturation activity.
+The local scalar fit is not an identification of the complete coupled
+operational-space inertia matrix. Repeated trials, rather than individual
+sensor samples, form the statistical replication unit.
+
+\paragraph{Rotation leakage within the ablations.}
+For directed translation along $i\in\{x,y,z\}$ we compute
+\begin{equation}
+ L_i=\frac{180}{\pi}
+ \frac{\int\|\omega(t)\|\,dt}{\int |v_i(t)|\,dt}
+ \quad[\mathrm{deg/m}],
+\end{equation}
+over the instructed motion interval. Trials below a predefined minimum
+translation path are excluded from this ratio and reported separately.
+This metric is collected within each parameter sweep, rather than in a
+separate rotation-leakage experiment.

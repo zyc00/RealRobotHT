@@ -185,7 +185,176 @@ recognizes it. Snapshot SHA256:
 Tests replay rest, movement, reversals, saturation and gain toggles against the
 original B601 class. Numerical parity does not establish hardware stability.
 
+## Leader/follower joint mirroring
+
+For leader-only F/T validation, randomized ablation manifests, acquisition,
+distal-payload calibration and plots, see [the experiment run guide](docs/EXPERIMENTS.md).
+Start with its sensor/network checks; experimental condition lists do not certify
+high-assist settings as safe, and synthetic demo figures are not robot results.
+
+The leader panel has one **Breakaway fraction (all leader joints)** slider,
+0–1, initialized by `--balance-breakaway`. It sets the same fraction on all six
+joints; 1 means each joint's full calibrated breakaway term, still multiplied
+by friction scale and gates and subject to existing torque caps. It is not a
+shared budget divided among six joints. Per-joint UI/API controls were removed;
+per-joint torque and saturation readouts remain available.
+
+`joint_breakaway.py` extends the archived B601 recurrence with the fraction
+vector and telemetry; the original snapshot remains unmodified. Equal fractions
+are tested for numerical equivalence. The panel reports `breakaway_torque`
+(requested direct term before shaping/total caps), `core_saturated` (total core
+extra torque over its cap), and `feedforward_saturated` (gravity plus guarded
+extra over the final cap). These flags are software saturation, not measured
+motor saturation. Logs add a `breakaway` array with per-joint fractions, requested
+torques, pre-cap core outputs and saturation flags. Inertia shaping still couples
+joints through its matrix.
+
+Follower J6 now defaults to **leader J6 -45°** in both MOVE_J and MIT modes.
+Override with `--follower-j6-offset-deg 0` to restore direct mirroring, or `45`
+to reverse the correction. This is a joint-angle offset, not a gripper-opening
+command. Targets still slew; there is no immediate 45° target step. The leader
+guard uses the follower's model/firmware envelope shifted by the negative offset.
+For the current limits this reduces leader J6 to approximately [-74°, +119°],
+while follower J6 remains [-119°, +119°]. Startup uses each arm's own guard;
+measured follower angles are not offset again. Logs retain raw leader angles
+and record `joint_offset_rad`; telemetry includes the mapped target. No hardware
+motion was performed to verify the physical correction direction.
+
+### Optional experimental MIT follower
+
+Add `--follower-mode mit --follower-kp 10 --follower-kd 0.8` to select MIT PD
+position tracking instead of the default MOVE_J follower. Both arms' confirmed
+startup positioning still uses MOVE_J. A separate `MIT` confirmation is required
+before starting the run, even with `--yes`. The follower seeds its own measured
+pose, verifies fresh MIT-mode feedback, then follows at a nominal 100 Hz.
+
+The same `--serve` panel exposes **Follower MIT Kp** (1–30) and **Follower MIT Kd**
+(0.1–2), each shared across all six joints. These are raw firmware gain fields,
+not calibrated physical units or certified-safe bounds. Live changes slew at
+5 kp units/s and 0.5 kd units/s. The target-speed slider remains active; firmware
+speed percentage is disabled because it does not govern MIT PD tracking.
+Applied kp/kd are saved in the follower log's `applied_gains` array.
+
+MIT tracking commands zero desired velocity and zero feed-forward torque; it
+does **not** reuse the leader's tool/gravity calibration. Without follower-specific
+gravity compensation, static position error supplies load-support torque and
+sag is possible. Support the follower load during initial testing, use a low
+target speed, and keep the hardware emergency stop accessible. This mode has
+offline tests only, not hardware validation. Do not assume increasing kp resolves
+the prior MOVE_J non-response.
+
+The MIT follower trips immediately for >5° command tracking error, actual pose
+outside the shared guard, mode loss, firmware faults, disabled motors, stale
+feedback, or a >100 ms control-loop gap. Stop requests MOVE_J position hold;
+delivery and physical stopping cannot be guaranteed if CAN/control fails. These
+software checks cannot limit firmware PD torque directly, stop a dead host, or
+detect collisions. Keep the operating envelope clear.
+
+### Default MOVE_J follower
+
+The `--serve` panel includes live **Follower target ramp (rad/s)** and
+**Follower firmware speed (%)** sliders, initialized from `--follower-speed`
+and `--follower-speed-pct`. They are disabled without a follower. Changes are
+applied by the follower control loop, not the web-server thread; firmware speed
+updates preserve the mounting configuration. These controls affect mirroring,
+not the slower confirmed startup moves. Applied speeds are recorded per sample
+in the follower log's `speed_settings` array. Increase speeds cautiously; the
+joint-limit and tracking-error protections remain unchanged.
+
+Before paired drag starts, both arms are offered concurrent, independent
+position-only startup moves if either is near/outside the guard. Each arm's
+target clips only its own boundary-near joints
+to 2 degrees inside the hard guard (normally J2 +3°, J3 -3°).
+This minimizes the startup move; the leader can start within the soft-resistance
+zone, so inward resistance may be felt after entering drag mode. Operating
+limits and tracking watchdog thresholds are not widened.
+The preview shows both targets and requires typing `MOVE`, even with `--yes`.
+Both arms move during this step, but mirroring remains off. The normal Enter
+prompt follows only after both reach their own targets. Their poses need not
+be identical: after Enter, the follower approaches the leader as before.
+Startup uses MOVE_J at 10% firmware speed and a 3°/s target ramp, pauses the
+ramp when tracking error reaches 1°, and aborts on stale feedback, disabled
+motors, mode/fault errors, excessive tracking error, or timeout. A parked pose
+up to 5° outside the nominal envelope first targets the nearest valid boundary;
+this initial correction is not covered by the 3°/s target-ramp bound. Larger
+excursions are refused. Cleanup requests a best-effort position hold. Clear the
+entire path of both arms before confirming; joint limits do not check collisions.
+
+Leader/follower runs now query all six joint limits from **both** arms before
+starting, and intersect them with the conservative model limits. Missing or
+invalid replies prevent startup. A software guard stops the run 1 degree inside
+that common envelope. Over the preceding 8 degrees, an external safety layer
+tapers outward non-gravity assistance and adds bounded inward spring/damping
+torque. The B601 reference core is unchanged; its observer is told the actual
+post-guard, post-cap command. The startup output prints the guarded ranges.
+No additional CLI flags are required. Reposition inside the printed range before
+restarting after a limit trip; do not bypass the checks or widen limits to clear it.
+
+The panel state exposes `limit_proximity` (0: clear, approaching 1: boundary)
+and `safety_delta`; logs save these separately in `safety`. The leader also
+checks follower feedback freshness during active torque control. Existing
+position-mode, tracking-error and feedback watchdogs remain enabled.
+
+This is **not a physical constraint or certified safety system**: resistance is
+torque-limited and a human can overpower it. A trip requests position hold, not
+motor disable, and a failed CAN bus cannot guarantee that hold is received.
+Joint limits do not detect self-collisions, table/obstacle collisions, tool
+collisions, or guarantee stopping distance. Clear both workspaces, start slowly,
+and keep the hardware emergency stop accessible. Hardware motion testing is
+still required before relying on the guard.
+
+The discovered adapters are `can0` (leader, USB `1-11.1:1.0`) and `can1`
+(new follower adapter, USB `1-3:1.0`). Interface names should be rechecked after
+replugging/rebooting. Both need 1 Mbps. The new adapter was initially down:
+
+```bash
+sudo ip link set can1 up type can bitrate 1000000
+/home/yuchen/miniforge3/envs/piperctl/bin/python examples/drag_mode.py \
+  --can can0 --follower-can can1 \
+  --tool data/tool_body.npz --gravity data/gravity_cal.npz \
+  --friction data/friction_model.npz --balance 0 --fric-scale 0 \
+  --serve --log data/leader_follower_01.npz
+```
+
+Before pressing Enter, clear both arms' paths: the follower will approach the
+leader's current pose. The leader uses B601-aligned torque drag; the follower uses
+normal MOVE_J position control and absolute J1–J6 targets (no relative offset or
+joint sign changes). The firmware follows streamed joint targets at 50 Hz with
+a default 0.5 rad/s per-joint command slew limit and 20% position speed. These
+limits deliberately cause lag during fast motion; matching is not instantaneous.
+Use `--follower-speed` and `--follower-speed-pct` to configure them. The follower
+needs no F/T sensor or tool/gravity calibration. Different tools mean equal joint
+angles do not imply identical tool-tip positions. Grippers are not mirrored.
+
+Feedback older than 150 ms on either arm, disabled follower motors, unreachable
+leader targets, persistent follower tracking error, or loss of position mode
+stops mirroring and requests position hold on both arms. Ctrl-C also holds both;
+it does not disable motors. If follower feedback is stale, its hold request uses
+the last commanded target. A failed CAN link cannot guarantee delivery of hold
+commands; retain access to the physical stop. Startup itself is speed-limited.
+
+The panel includes follower target/actual angles and tracking error. `--log`
+also saves `<stem>.follower.npz` with leader, follower and commanded joint angles.
+`--dry-run` validates software/models without CAN access, so it does not verify
+that a live follower is responding. At startup a silent follower is restored to
+normal motion-output communication with default CAN IDs (`MasterSlaveConfig`
+0xFC), then given up to two seconds to produce fresh joint feedback. This step
+does not enable motors or send position targets. Startup still fails if feedback
+does not recover. On this follower, the restore recovered 200 Hz joint feedback;
+position mirroring has been verified offline but not yet through a hardware run.
+Follower position mode preserves its configured mount (`installation_pos=0`)
+and is selected once at startup, then only joint targets are streamed. Reasserting
+the mount on this firmware paused joint feedback for over 200 ms in a position-hold
+test; leaving it unchanged kept feedback age below 5 ms. The runtime stale-feedback
+limit remains 150 ms. No follower load or mounting parameters are rewritten.
+Leader MIT-mode entry likewise preserves its mount setting. Before starting the
+torque loop it requires a post-switch MIT status and fresh joint feedback stable
+for 50 ms, with a 2.5 s startup timeout. Cached pre-switch feedback cannot release
+the follower into tracking. Startup readiness is separate from the unchanged
+150 ms runtime stale-feedback watchdog.
+
 ## Admittance demo (not a working teleop mode)
+
 
 ```bash
 python examples/admittance_demo.py --light
